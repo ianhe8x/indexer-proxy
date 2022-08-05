@@ -40,8 +40,8 @@ pub struct StateChannel {
 
 impl StateChannel {
     pub async fn get(deployment: &str) -> Result<StateChannel, Error> {
-        let deployment_id = if deployment.starts_with("0x") {
-            hex::decode(&deployment[2..]).map_err(|_| Error::InvalidRequest)?
+        let deployment_id = if let Some(bytes) = deployment.strip_prefix("0x") {
+            hex::decode(bytes).map_err(|_| Error::InvalidRequest)?
         } else {
             // default is bs58
             bs58::decode(deployment).into_vec().map_err(|_| Error::InvalidRequest)?

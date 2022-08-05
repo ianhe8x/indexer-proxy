@@ -84,8 +84,8 @@ async fn listen(
 
         loop {
             let res = select! {
-                v = async { out_recv.recv().await.map(|msg| FutureResult::Out(msg)) } => v,
-                v = async { self_recv.recv().await.map(|msg| FutureResult::Stream(msg)) } => v
+                v = async { out_recv.recv().await.map(FutureResult::Out) } => v,
+                v = async { self_recv.recv().await.map(FutureResult::Stream) } => v
             };
 
             match res {
@@ -94,15 +94,13 @@ async fn listen(
                     if is_ws {
                         if id == 0 {
                             // default send to all ws.
-                            for (_, (s, iw)) in &connections {
+                            for (s, iw) in connections.values() {
                                 if *iw {
                                     let _ = s.send(RpcInnerMessage::Response(params.clone())).await;
                                 }
                             }
-                        } else {
-                            if let Some((s, _)) = connections.get(&id) {
-                                let _ = s.send(RpcInnerMessage::Response(params)).await;
-                            }
+                        } else if let Some((s, _)) = connections.get(&id) {
+                            let _ = s.send(RpcInnerMessage::Response(params)).await;
                         }
                     } else {
                         let s = connections.remove(&id);

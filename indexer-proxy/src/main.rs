@@ -15,6 +15,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
+#![allow(clippy::or_fun_call)]
 
 #[macro_use]
 extern crate tracing;
@@ -67,7 +68,9 @@ async fn main() {
             key
         };
         tokio::spawn(async move {
-            p2p_server::<p2p::IndexerP2p>(p2p_bind, p2p_rpc, p2p_ws, None, key).await.unwrap();
+            p2p_server::<p2p::IndexerP2p>(p2p_bind, p2p_rpc, p2p_ws, None, key)
+                .await
+                .unwrap();
         });
     }
 

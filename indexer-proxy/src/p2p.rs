@@ -59,7 +59,7 @@ async fn channel_handle(infos: &str) -> Response {
     if params.get("method").is_none() || params.get("state").is_none() {
         return Response::Error("Invalid request".to_owned());
     }
-    let state_res = serde_json::from_str::<Value>(&params["state"].as_str().unwrap());
+    let state_res = serde_json::from_str::<Value>(params["state"].as_str().unwrap());
     if state_res.is_err() {
         return Response::Error("Invalid request state".to_owned());
     }
@@ -67,7 +67,7 @@ async fn channel_handle(infos: &str) -> Response {
     match params["method"].as_str().unwrap() {
         "open" => match open_state(&state).await {
             Ok(state) => Response::StateChannel(serde_json::to_string(&state).unwrap()),
-            Err(err) => Response::Error(err.to_string()),
+            Err(err) => Response::Error(err.to_status_message().1),
         },
         "query" => {
             if params.get("project").is_none() || params.get("query").is_none() {
@@ -80,7 +80,7 @@ async fn channel_handle(infos: &str) -> Response {
                 Ok((state, query)) => {
                     Response::StateChannel(serde_json::to_string(&json!(vec![query, state])).unwrap())
                 }
-                Err(err) => Response::Error(err.to_string()),
+                Err(err) => Response::Error(err.to_status_message().1),
             }
         }
         _ => Response::Error("Invalid request".to_owned()),

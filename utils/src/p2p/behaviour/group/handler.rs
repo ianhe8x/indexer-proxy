@@ -153,9 +153,9 @@ impl Group {
 
         let message = GroupMessage {
             sequence,
+            group,
             source: self.config.local_peer_id,
             data: data.into(),
-            group: group,
         };
 
         if let Some(peers) = self.groups.get(&message.group) {
@@ -202,13 +202,8 @@ impl NetworkBehaviour for Group {
     }
 
     fn inject_new_listen_addr(&mut self, _id: ListenerId, addr: &Multiaddr) {
-        if let Some(protocol) = addr.clone().pop() {
-            match protocol {
-                MultiAddrProtocol::Tcp(port) => {
-                    self.config.local_port = port;
-                }
-                _ => {}
-            }
+        if let Some(MultiAddrProtocol::Tcp(port)) = addr.clone().pop() {
+            self.config.local_port = port;
         }
     }
 
@@ -296,7 +291,7 @@ impl NetworkBehaviour for Group {
                     GroupActionType::Join(port, is_request) => {
                         if is_request {
                             self.events.push_back(NetworkBehaviourAction::NotifyHandler {
-                                peer_id: peer_id,
+                                peer_id,
                                 handler: NotifyHandler::Any,
                                 event: GroupProtocol {
                                     protocol: self.protocol.clone(),
@@ -317,7 +312,7 @@ impl NetworkBehaviour for Group {
                             }
 
                             self.events.push_back(NetworkBehaviourAction::NotifyHandler {
-                                peer_id: peer_id,
+                                peer_id,
                                 handler: NotifyHandler::Any,
                                 event: GroupProtocol {
                                     protocol: self.protocol.clone(),

@@ -63,13 +63,12 @@ async fn ws_connection(send: Sender<RpcInnerMessage>, raw_stream: TcpStream, add
 
     loop {
         let res = select! {
-            v = async { s_recv.recv().await.map(|msg| FutureResult::Out(msg)) } => v,
+            v = async { s_recv.recv().await.map(FutureResult::Out) } => v,
             v = async {
                 reader
                     .next()
                     .await
-                    .map(|msg| msg.map(|msg| FutureResult::Stream(msg)).ok())
-                    .flatten()
+                    .and_then(|msg| msg.map(FutureResult::Stream).ok())
             } => v,
         };
 

@@ -27,10 +27,10 @@ use serde_with::skip_serializing_none;
 
 use crate::{
     constants::{APPLICATION_JSON, AUTHORIZATION, KEEP_ALIVE},
-    error::GraphQLServerError,
+    error::Error,
 };
 
-pub static REQUEST_CLIENT: Lazy<Client> = Lazy::new(|| reqwest::Client::new());
+pub static REQUEST_CLIENT: Lazy<Client> = Lazy::new(reqwest::Client::new);
 
 #[skip_serializing_none]
 #[derive(Serialize, Deserialize, Debug)]
@@ -45,7 +45,7 @@ pub struct GraphQLQuery {
 }
 
 // Request to graphql service.
-pub async fn graphql_request(uri: &str, query: &Value) -> Result<Value, GraphQLServerError> {
+pub async fn graphql_request(uri: &str, query: &Value) -> Result<Value, Error> {
     let response_result = REQUEST_CLIENT
         .post(uri)
         .header(CONTENT_TYPE, APPLICATION_JSON)
@@ -56,13 +56,13 @@ pub async fn graphql_request(uri: &str, query: &Value) -> Result<Value, GraphQLS
 
     let res = match response_result {
         Ok(res) => res,
-        Err(e) => return Err(GraphQLServerError::QueryError(format!("{}", e))),
+        Err(e) => return Err(Error::GraphQLQueryError(e.to_string())),
     };
 
     let json_result = res.json().await;
     let json_data: Value = match json_result {
         Ok(res) => res,
-        Err(e) => return Err(GraphQLServerError::InternalError(format!("Parse result error:{}", e))),
+        Err(e) => return Err(Error::GraphQLInternalError(e.to_string())),
     };
 
     Ok(json_data)
@@ -153,12 +153,10 @@ pub async fn jsonrpc_request(id: u64, url: &str, method: &str, params: Vec<Value
                             Ok(json!(res))
                         }
                     }
+                } else if data.get("error").is_some() {
+                    Err(json!(data["error"]["message"]))
                 } else {
-                    if data.get("error").is_some() {
-                        Err(json!(data["error"]["message"]))
-                    } else {
-                        Ok(json!("ok"))
-                    }
+                    Ok(json!("ok"))
                 }
             }
             Err(err) => Err(json!(err.to_string())),

@@ -38,8 +38,8 @@ pub enum RpcError {
     Custom(String),
 }
 
-impl Into<std::io::Error> for RpcError {
-    fn into(self) -> std::io::Error {
+impl From<RpcError> for std::io::Error {
+    fn from(_: RpcError) -> std::io::Error {
         std::io::Error::new(std::io::ErrorKind::Other, "RPC Error")
     }
 }
@@ -115,8 +115,7 @@ pub fn parse_jsonrpc(json_string: String) -> std::result::Result<RpcParam, (RpcE
         Ok(mut value) => {
             let id_res = value
                 .get("id")
-                .map(|id| id.as_u64().or(id.as_str().map(|sid| sid.parse::<u64>().ok()).flatten()))
-                .flatten();
+                .and_then(|id| id.as_u64().or(id.as_str().and_then(|sid| sid.parse::<u64>().ok())));
 
             if id_res.is_none() {
                 return Err((RpcError::ParseError, 0));
@@ -139,8 +138,7 @@ pub fn parse_jsonrpc(json_string: String) -> std::result::Result<RpcParam, (RpcE
 
             let jsonrpc = value
                 .get("jsonrpc")
-                .map(|v| v.as_str().map(|s| if s == "2.0" { Some(2) } else { None }).flatten())
-                .flatten();
+                .and_then(|v| v.as_str().and_then(|s| if s == "2.0" { Some(2) } else { None }));
 
             if jsonrpc.is_none() {
                 return Err((RpcError::InvalidVersion, id));

@@ -378,7 +378,8 @@ async fn main() {
                         let indexer: Address = next_params.next().unwrap().parse().unwrap();
                         let amount = U256::from_dec_str(next_params.next().unwrap()).unwrap();
                         let expiration = U256::from_dec_str(next_params.next().unwrap()).unwrap();
-                        let deployment_id = bs58::decode(default_project).into_vec().unwrap();
+                        let mut deployment_id = [0u8; 32];
+                        deployment_id.copy_from_slice(&bs58::decode(default_project).into_vec().unwrap());
 
                         let state = OpenState::consumer_generate(
                             None,

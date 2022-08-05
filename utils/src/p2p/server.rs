@@ -79,7 +79,7 @@ pub async fn server<T: P2pHandler>(
 
     loop {
         let res = select! {
-            v = async { out_recv.recv().await.map(|rpc| FutureResult::Rpc(rpc)) } => v.unwrap(),
+            v = async { out_recv.recv().await.map(FutureResult::Rpc) } => v.unwrap(),
             v = async {
                 let event = swarm.select_next_some().await;
                 FutureResult::P2p(event)
@@ -162,7 +162,7 @@ pub async fn server<T: P2pHandler>(
             FutureResult::Rpc(RpcMessage(uid, params, is_ws)) => {
                 if let Ok(mut events) = rpc_handler.handle(params).await {
                     loop {
-                        if events.len() != 0 {
+                        if !events.is_empty() {
                             match events.remove(0) {
                                 Event::Rpc(msg) => {
                                     let _ = rpc_send.send(RpcMessage(uid, msg, is_ws)).await;
@@ -186,16 +186,16 @@ pub async fn server<T: P2pHandler>(
                                     let _ = swarm.behaviour_mut().group.join(gid);
                                 }
                                 Event::GroupLeave(gid) => {
-                                    let _ = swarm.behaviour_mut().group.leave(gid);
+                                    swarm.behaviour_mut().group.leave(gid);
                                 }
                                 Event::GroupBroadcast(gid, data) => {
-                                    let _ = swarm.behaviour_mut().group.broadcast(gid, data);
+                                    swarm.behaviour_mut().group.broadcast(gid, data);
                                 }
                                 Event::GroupAddNode(gid, pid) => {
-                                    let _ = swarm.behaviour_mut().group.add_node_to_group(gid, pid);
+                                    swarm.behaviour_mut().group.add_node_to_group(gid, pid);
                                 }
                                 Event::GroupDelNode(gid, pid) => {
-                                    let _ = swarm.behaviour_mut().group.remove_node_from_group(gid, pid);
+                                    swarm.behaviour_mut().group.remove_node_from_group(gid, pid);
                                 }
                             }
                         } else {
@@ -208,17 +208,11 @@ pub async fn server<T: P2pHandler>(
     }
 }
 
+type EitherErrorType = EitherError<Failure, ConnectionHandlerUpgrErr<std::io::Error>>;
+type EitherErrorP2P = EitherError<EitherErrorType, ConnectionHandlerUpgrErr<std::io::Error>>;
 enum FutureResult {
     Rpc(RpcMessage),
-    P2p(
-        SwarmEvent<
-            NetworkEvent,
-            EitherError<
-                EitherError<Failure, ConnectionHandlerUpgrErr<std::io::Error>>,
-                ConnectionHandlerUpgrErr<std::io::Error>,
-            >,
-        >,
-    ),
+    P2p(SwarmEvent<NetworkEvent, EitherErrorP2P>),
 }
 
 pub enum Event {

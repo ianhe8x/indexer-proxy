@@ -51,7 +51,7 @@ pub static ACCOUNT: Lazy<RwLock<Account>> = Lazy::new(|| RwLock::new(Account::de
 pub async fn fetch_account_metadata() -> Result<()> {
     let url = COMMAND.service_url();
     let query = json!({"query": "query { accountMetadata { indexer controller } }" });
-    let result = graphql_request(&url, &query).await;
+    let result = graphql_request(url, &query).await;
     let value = result.map_err(|_e| Error::InvalidServiceEndpoint)?;
     let indexer: Address = value
         .pointer("/data/accountMetadata/indexer")
@@ -68,7 +68,7 @@ pub async fn fetch_account_metadata() -> Result<()> {
         .as_str()
         .unwrap_or("")
         .trim();
-    let sk_values = serde_json::from_str::<serde_json::Value>(&sk).map_err(|_e| Error::InvalidController)?;
+    let sk_values = serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
     if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
         return Err(Error::InvalidController);
     }

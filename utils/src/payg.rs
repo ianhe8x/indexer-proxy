@@ -61,9 +61,10 @@ impl OpenState {
         } else {
             let mut rng = ChaChaRng::from_entropy();
             let mut id = [0u64; 4]; // u256
-            for i in 0..4 {
-                id[i] = rng.next_u64();
-            }
+            id[0] = rng.next_u64();
+            id[1] = rng.next_u64();
+            id[2] = rng.next_u64();
+            id[3] = rng.next_u64();
             U256(id)
         };
         let mut state = Self {

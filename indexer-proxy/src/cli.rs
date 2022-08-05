@@ -26,11 +26,11 @@ use subql_proxy_utils::error::Error;
 use subql_proxy_utils::p2p::libp2p::Multiaddr;
 
 #[cfg(feature = "p2p")]
-const SEED_ADDR: &'static str = "/ip4/0.0.0.0/tcp/7000";
+const SEED_ADDR: &str = "/ip4/0.0.0.0/tcp/7000";
 #[cfg(feature = "p2p")]
-const P2P_ADDR: &'static str = "/ip4/0.0.0.0/tcp/0";
+const P2P_ADDR: &str = "/ip4/0.0.0.0/tcp/0";
 
-pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(|| CommandLineArgs::from_args());
+pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args);
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Indexer Proxy", about = "Command line for starting indexer proxy server")]
@@ -86,7 +86,7 @@ impl CommandLineArgs {
         let ptext = decrypt(Cipher::aes_256_ctr(), self.secret_key.as_bytes(), Some(&iv), &ctext)
             .map_err(|_| Error::InvalidEncrypt)?;
 
-        String::from_utf8(ptext.clone()).map_err(|_| Error::InvalidEncrypt)
+        String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt)
     }
 
     pub fn host(&self) -> &str {

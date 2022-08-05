@@ -16,111 +16,97 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use serde::Serialize;
-use std::convert::Infallible;
-use std::fmt;
-use thiserror::Error;
-use warp::{http::StatusCode, Rejection, Reply};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde_json::json;
 
-// TODO: reorganise the errors
-#[derive(Error, Debug)]
+/// App error type.
+#[derive(Debug)]
 pub enum Error {
-    #[error("invalid auth token")]
     JWTTokenError,
-    #[error("invalid payload to create token")]
     JWTTokenCreationError,
-    #[error("invalid auth header")]
-    InvalidAuthHeaderError,
-    #[error("permission deny")]
-    NoPermissionError,
-    #[error("token expired")]
     JWTTokenExpiredError,
-    #[error("invalid project id")]
-    InvalidProejctId,
-    #[error("invalid coordinator service endpoint")]
-    InvalidServiceEndpoint,
-    #[error("invalid or missing controller")]
-    InvalidController,
-    #[error("invalid serialize")]
-    InvalidSerialize,
-    #[error("invalid signature")]
-    InvalidSignature,
-    #[error("invalid encrypt or decrypt")]
-    InvalidEncrypt,
-    #[error("service exception")]
+    GraphQLQueryError(String),
+    GraphQLInternalError(String),
+    InvalidAuthHeaderError,
+    NoPermissionError,
     ServiceException,
-    #[error("invalid request")]
+    InvalidProejctId,
+    InvalidServiceEndpoint,
+    InvalidController,
+    InvalidSerialize,
+    InvalidSignature,
+    InvalidEncrypt,
     InvalidRequest,
 }
 
-#[derive(Serialize, Debug)]
-struct ErrorResponse {
-    message: String,
-    status: String,
-}
-
-impl warp::reject::Reject for Error {}
-
-pub async fn handle_rejection(err: Rejection, debug: bool) -> std::result::Result<impl Reply, Infallible> {
-    let (code, message) = if err.is_not_found() {
-        (StatusCode::NOT_FOUND, "Not Found".to_string())
-    } else if let Some(e) = err.find::<Error>() {
-        match e {
-            Error::InvalidProejctId => (StatusCode::BAD_REQUEST, e.to_string()),
-            Error::NoPermissionError => (StatusCode::UNAUTHORIZED, e.to_string()),
-            Error::JWTTokenError => (StatusCode::UNAUTHORIZED, e.to_string()),
-            Error::JWTTokenExpiredError => (StatusCode::UNAUTHORIZED, e.to_string()),
-            Error::JWTTokenCreationError => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            _ => (StatusCode::BAD_REQUEST, e.to_string()),
-        }
-    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
-        (StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed".to_string())
-    } else {
-        if debug {
-            error!("{:?}", err);
-        }
-
-        (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error".to_string())
-    };
-
-    let json = warp::reply::json(&ErrorResponse {
-        status: code.to_string(),
-        message,
-    });
-
-    Ok(warp::reply::with_status(json, code))
-}
-
-#[derive(Debug)]
-pub enum GraphQLServerError {
-    QueryError(String),
-    InternalError(String),
-}
-
-impl warp::reject::Reject for GraphQLServerError {}
-
-impl fmt::Display for GraphQLServerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            GraphQLServerError::QueryError(ref e) => {
-                write!(f, "GraphQL server error (query error): {}", e)
-            }
-            GraphQLServerError::InternalError(ref e) => {
-                write!(f, "GraphQL server error (internal error): {}", e)
-            }
+impl Error {
+    pub fn to_status_message(self) -> (StatusCode, String) {
+        match self {
+            Error::JWTTokenError => (StatusCode::UNAUTHORIZED, "invalid auth token".to_owned()),
+            Error::JWTTokenCreationError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "invalid payload to create token".to_owned(),
+            ),
+            Error::JWTTokenExpiredError => (StatusCode::UNAUTHORIZED, "token expired".to_owned()),
+            Error::GraphQLQueryError(e) => (
+                StatusCode::NOT_FOUND,
+                format!("GraphQL server error (query error): {}", e),
+            ),
+            Error::GraphQLInternalError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("GraphQL server error (internal error): {}", e),
+            ),
+            Error::NoPermissionError => (StatusCode::UNAUTHORIZED, "permission deny".to_owned()),
+            Error::ServiceException => (StatusCode::UNAUTHORIZED, "service exception".to_owned()),
+            Error::InvalidAuthHeaderError => (StatusCode::BAD_REQUEST, "invalid auth header".to_owned()),
+            Error::InvalidProejctId => (StatusCode::BAD_REQUEST, "invalid project id".to_owned()),
+            Error::InvalidServiceEndpoint => (
+                StatusCode::BAD_REQUEST,
+                "invalid coordinator service endpoint".to_owned(),
+            ),
+            Error::InvalidController => (StatusCode::BAD_REQUEST, "invalid or missing controller".to_owned()),
+            Error::InvalidSerialize => (StatusCode::BAD_REQUEST, "invalid serialize".to_owned()),
+            Error::InvalidSignature => (StatusCode::BAD_REQUEST, "invalid signature".to_owned()),
+            Error::InvalidEncrypt => (StatusCode::BAD_REQUEST, "invalid encrypt or decrypt".to_owned()),
+            Error::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid request".to_owned()),
         }
     }
 }
 
-impl std::error::Error for GraphQLServerError {
-    fn description(&self) -> &str {
-        "Failed to process the GraphQL request"
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        let (status, error_message) = self.to_status_message();
+        let body = Json(json!({
+            "error": error_message,
+        }));
+        (status, body).into_response()
     }
+}
 
-    fn cause(&self) -> Option<&dyn std::error::Error> {
-        match *self {
-            GraphQLServerError::QueryError(_) => None,
-            GraphQLServerError::InternalError(_) => None,
-        }
+impl From<hex::FromHexError> for Error {
+    fn from(_err: hex::FromHexError) -> Error {
+        Error::InvalidSerialize
+    }
+}
+
+impl From<rustc_hex::FromHexError> for Error {
+    fn from(_err: rustc_hex::FromHexError) -> Error {
+        Error::InvalidSerialize
+    }
+}
+
+impl From<uint::FromHexError> for Error {
+    fn from(_err: uint::FromHexError) -> Error {
+        Error::InvalidSerialize
+    }
+}
+
+impl From<ethereum_types::FromDecStrErr> for Error {
+    fn from(_err: ethereum_types::FromDecStrErr) -> Error {
+        Error::InvalidSerialize
     }
 }

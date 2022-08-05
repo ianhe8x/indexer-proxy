@@ -16,16 +16,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use axum::http::header::{HeaderName, CONTENT_TYPE, USER_AGENT};
+use once_cell::sync::Lazy;
+
 pub const APPLICATION_JSON: &str = "application/json";
 
 pub const KEEP_ALIVE: &str = "Keep-Alive";
 
 pub const AUTHORIZATION: &str = "Authorization";
 
-pub const HEADERS: [&'static str; 5] = [
-    "content-type",
-    "x-apollo-tracing",
-    "agent",
-    "authorization",
-    "user-agent",
-];
+pub static HEADERS: Lazy<[HeaderName; 5]> = Lazy::new(|| {
+    [
+        CONTENT_TYPE,
+        USER_AGENT,
+        HeaderName::from_static("authorization"),
+        HeaderName::from_static("agent"),
+        HeaderName::from_static("x-apollo-tracing"),
+    ]
+});

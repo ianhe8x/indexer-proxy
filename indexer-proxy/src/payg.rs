@@ -18,17 +18,16 @@
 
 //! Pay-As-You-Go with state channel helper functions.
 
+use axum::{
+    async_trait,
+    extract::{FromRequest, RequestParts},
+    http::header::AUTHORIZATION,
+};
 use serde_json::{json, Value};
 use subql_proxy_utils::{
     error::Error,
     payg::{convert_sign_to_string, OpenState, QueryState},
     request::graphql_request,
-    types::WebResult,
-};
-use warp::{
-    filters::header::headers_cloned,
-    http::header::{HeaderMap, HeaderValue, AUTHORIZATION},
-    reject, Filter, Rejection,
 };
 use web3::{signing::SecretKeyRef, types::U256};
 
@@ -71,7 +70,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
     );
 
     let query = json!({ "query": mdata });
-    let result = graphql_request(&url, &query)
+    let result = graphql_request(url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
     let price = result
@@ -105,7 +104,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let data = match graphql_request(&query_url, query).await {
         Ok(result) => {
             let string = serde_json::to_string(&result).unwrap(); // safe unwrap
-            let _sign = crate::account::sign_message(&string.as_bytes()); // TODO add to header
+            let _sign = crate::account::sign_message(string.as_bytes()); // TODO add to header
 
             // TODO add state to header and request to coordiantor know the response.
 
@@ -130,7 +129,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     );
 
     let query = json!({ "query": mdata });
-    let result = graphql_request(&url, &query)
+    let result = graphql_request(url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
     let _ = result.get("data").ok_or(Error::ServiceException)?;
@@ -138,16 +137,27 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     Ok((state.to_json(), data))
 }
 
-pub fn with_state() -> impl Filter<Extract = (Value,), Error = Rejection> + Clone {
-    headers_cloned()
-        .map(move |headers: HeaderMap<HeaderValue>| (headers))
-        .and_then(authorize)
-}
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct AuthPayg(pub Value);
 
-async fn authorize(headers: HeaderMap<HeaderValue>) -> WebResult<Value> {
-    let header = headers
-        .get(AUTHORIZATION)
-        .and_then(|x| x.to_str().ok())
-        .ok_or(reject::custom(Error::NoPermissionError))?;
-    serde_json::from_str::<Value>(header).map_err(|_| reject::custom(Error::InvalidAuthHeaderError))
+#[async_trait]
+impl<B> FromRequest<B> for AuthPayg
+where
+    B: Send,
+{
+    type Rejection = Error;
+
+    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+        // Get authorisation header
+        let authorisation = req
+            .headers()
+            .get(AUTHORIZATION)
+            .ok_or(Error::NoPermissionError)?
+            .to_str()
+            .map_err(|_| Error::NoPermissionError)?;
+
+        serde_json::from_str::<Value>(authorisation)
+            .map(AuthPayg)
+            .map_err(|_| Error::InvalidAuthHeaderError)
+    }
 }

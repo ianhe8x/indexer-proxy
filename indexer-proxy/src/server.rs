@@ -17,21 +17,20 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![deny(warnings)]
-use std::net::Ipv4Addr;
-
+use axum::{
+    extract::Path,
+    http::Method,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
-use subql_proxy_utils::{
-    constants::HEADERS,
-    error::{handle_rejection, Error},
-    query::METADATA_QUERY,
-    request::graphql_request,
-    types::WebResult,
-};
-use warp::{reject, reply, Filter, Reply};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use subql_proxy_utils::{constants::HEADERS, error::Error, query::METADATA_QUERY, request::graphql_request};
+use tower_http::cors::{Any, CorsLayer};
 
-use crate::auth::{self, with_auth};
-use crate::payg::{open_state, query_state, with_state};
+use crate::auth::{create_jwt, AuthQuery, Payload};
+use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::get_project;
 use crate::{account, cli::COMMAND, prometheus};
 
@@ -48,108 +47,77 @@ pub struct QueryToken {
 }
 
 pub async fn start_server(host: &str, port: u16) {
-    // create token for query.
-    let token_route = warp::path!("token")
-        .and(warp::post())
-        .and(warp::body::json())
-        .and_then(generate_token);
-
-    // query with agreement.
-    let query_route = warp::path!("query" / String)
-        .and(warp::post())
-        .and(with_auth())
-        .and(warp::body::json())
-        .and_then(query_handler);
-
-    // open a state channel for payg.
-    let open_route = warp::path!("open")
-        .and(warp::post())
-        .and(warp::body::json())
-        .and_then(generate_payg);
-
-    // query with Pay-As-You-Go with state channel
-    let payg_route = warp::path!("payg" / String)
-        .and(warp::post())
-        .and(with_state())
-        .and(warp::body::json())
-        .and_then(payg_handler);
-
-    // query the metadata (indexer, controller, payg-price)
-    let metadata_route = warp::path!("metadata" / String)
-        .and(warp::get())
-        .and_then(metadata_handler);
-
-    // chain the routes
-    let routes = token_route
-        .or(query_route)
-        .or(open_route)
-        .or(payg_route)
-        .or(metadata_route)
-        .recover(|err| handle_rejection(err, COMMAND.dev()));
-    let cors = warp::cors()
-        .allow_any_origin()
-        .allow_headers(HEADERS)
-        .allow_methods(vec!["GET", "POST"]);
+    let app = Router::new()
+        // `POST /token` goes to create token for query.
+        .route("/token", post(generate_token))
+        // `POST /query/123` goes to query with agreement.
+        .route("/query/:id", post(query_handler))
+        // `POST /open` goes to open a state channel for payg.
+        .route("/open", post(generate_payg))
+        // `POST /payg/123` goes to query with Pay-As-You-Go with state channel.
+        .route("/payg/:id", post(payg_handler))
+        // `Get /metadata/123` goes to query the metadata (indexer, controller, payg-price).
+        .route("/metadata/:id", get(metadata_handler))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_headers(HEADERS.to_vec())
+                .allow_methods([Method::GET, Method::POST]),
+        );
 
     let ip_address: Ipv4Addr = host.parse().unwrap_or(Ipv4Addr::LOCALHOST);
-    warp::serve(routes.with(cors)).run((ip_address, port)).await;
+    let addr = SocketAddr::new(IpAddr::V4(ip_address), port);
+    info!("HTTP server bind: {}", addr);
+    axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
 }
 
-pub async fn generate_token(payload: auth::Payload) -> WebResult<impl Reply> {
+pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>, Error> {
     // TODO: request to coordiantor service to verify the account has valid service agreement with
     // indexer
-    let _ = match get_project(&payload.deployment_id) {
-        Ok(url) => url,
-        Err(e) => return Err(reject::custom(e)),
-    };
-
-    let token = auth::create_jwt(payload).map_err(|e| reject::custom(e))?;
-    Ok(reply::json(&QueryToken { token }))
+    get_project(&payload.deployment_id)?;
+    let token = create_jwt(payload)?;
+    Ok(Json(json!(QueryToken { token })))
 }
 
-pub async fn query_handler(id: String, deployment_id: String, query: Value) -> WebResult<impl Reply> {
+pub async fn query_handler(
+    AuthQuery(deployment_id): AuthQuery,
+    Path(id): Path<String>,
+    Json(query): Json<Value>,
+) -> Result<Json<Value>, Error> {
     if COMMAND.auth() && id != deployment_id {
-        return Err(reject::custom(Error::JWTTokenError));
+        return Err(Error::JWTTokenError);
     };
 
-    let query_url = match get_project(&id) {
-        Ok(url) => url,
-        Err(e) => return Err(reject::custom(e)),
-    };
+    let query_url = get_project(&id)?;
 
     prometheus::push_query_metrics(id.to_owned());
 
-    let response = graphql_request(&query_url, &query).await;
-    match response {
-        Ok(result) => Ok(reply::json(&result)),
-        Err(e) => Err(reject::custom(e)),
-    }
+    let response = graphql_request(&query_url, &query).await?;
+    Ok(Json(response))
 }
 
-pub async fn generate_payg(payload: Value) -> WebResult<impl Reply> {
-    let state = open_state(&payload).await.map_err(|e| reject::custom(e))?;
-    Ok(reply::json(&state))
+pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Error> {
+    let state = open_state(&payload).await?;
+    Ok(Json(state))
 }
 
-pub async fn payg_handler(id: String, state: Value, query: Value) -> WebResult<impl Reply> {
+pub async fn payg_handler(
+    AuthPayg(state): AuthPayg,
+    Path(id): Path<String>,
+    Json(query): Json<Value>,
+) -> Result<Json<Value>, Error> {
     let (state_data, query_data) = query_state(&id, &state, &query).await?;
     prometheus::push_query_metrics(id);
-    Ok(reply::json(&json!([query_data, state_data])))
+    Ok(Json(json!([query_data, state_data])))
 }
 
-pub async fn metadata_handler(id: String) -> WebResult<impl Reply> {
-    let query_url = match get_project(&id) {
-        Ok(url) => url,
-        Err(e) => return Err(reject::custom(e)),
-    };
+pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
+    let query_url = get_project(&id)?;
 
     // TODO: move to other place
     let _ = account::fetch_account_metadata().await;
 
     let query = json!({ "query": METADATA_QUERY });
-    let response = graphql_request(&query_url, &query).await;
-    match response {
-        Ok(result) => Ok(reply::json(&result)),
-        Err(e) => Err(reject::custom(e)),
-    }
+    let response = graphql_request(&query_url, &query).await?;
+    Ok(Json(response))
 }

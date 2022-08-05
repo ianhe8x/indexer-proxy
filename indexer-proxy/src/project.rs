@@ -38,11 +38,11 @@ pub fn add_project(deployment_id: String, url: String) {
 
 pub fn get_project(key: &str) -> Result<String, Error> {
     let map = PROJECTS.lock().unwrap();
-    let url = match map.get(key) {
-        Some(url) => url,
-        None => return Err(Error::InvalidProejctId),
-    };
-    Ok(url.to_owned())
+    if let Some(url) = map.get(key) {
+        Ok(url.clone())
+    } else {
+        Err(Error::InvalidProejctId)
+    }
 }
 
 pub fn list_projects() -> Vec<String> {
@@ -63,27 +63,38 @@ struct ProjectItem {
     query_endpoint: String,
 }
 
-pub async fn init_projects() {
-    let url = COMMAND.service_url();
+pub async fn fetch_projects(url: &str) {
     // graphql query for getting alive projects
     let query = json!({ "query": "query { getAliveProjects { id queryEndpoint } }" });
-    let result = graphql_request(&url, &query).await;
+    let result = graphql_request(url, &query).await;
 
     match result {
-        Ok(value) => match value.pointer("/data") {
-            Some(v_d) => {
+        Ok(value) => {
+            if let Some(v_d) = value.pointer("/data") {
                 let v_str: String = serde_json::to_string(v_d).unwrap_or(String::from(""));
                 let v: ProjectsResponse = serde_json::from_str(v_str.as_str()).unwrap();
                 for item in v.get_alive_projects {
                     add_project(item.id, item.query_endpoint);
                 }
             }
-            _ => {}
-        },
-        Err(e) => println!("Init projects failed: {}", e),
+        }
+        Err(e) => error!("Init projects failed: {:?}", e),
     };
+}
 
+pub async fn init_projects() {
+    let url = COMMAND.service_url();
+    fetch_projects(url).await;
     debug!("indexing projects: {:?}", PROJECTS.lock().unwrap());
+
+    let url_clone = url.to_owned();
+    tokio::spawn(async move {
+        loop {
+            debug!("loop fetch projects");
+            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+            fetch_projects(&url_clone).await;
+        }
+    });
 }
 
 pub fn subscribe() {
@@ -110,7 +121,7 @@ fn subscribe_project_change(url: &str) {
         }
     })
     .to_string();
-    let _ = socket.write_message(Message::Text(out_message)).unwrap();
+    socket.write_message(Message::Text(out_message)).unwrap();
     loop {
         let incoming_msg = socket.read_message().expect("Error reading message");
         let text = incoming_msg.to_text().unwrap();

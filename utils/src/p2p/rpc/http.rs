@@ -61,7 +61,7 @@ enum HTTP {
 fn parse_req<'a>(src: &[u8]) -> std::result::Result<HTTP, &'a str> {
     let mut req_parsed_headers = [httparse::EMPTY_HEADER; 16];
     let mut req = httparse::Request::new(&mut req_parsed_headers);
-    let status = req.parse(&src).map_err(|_| "HTTP parse error")?;
+    let status = req.parse(src).map_err(|_| "HTTP parse error")?;
 
     let content_length_headers: Vec<httparse::Header> = req
         .headers
@@ -142,23 +142,23 @@ async fn http_connection(
                 .expect("Http to Rpc channel closed");
         }
         Err((err, id)) => {
-            stream
-                .write(format!("{}{}", res, err.json(id).to_string()).as_bytes())
-                .await?;
+            let _ = stream.write(format!("{}{}", res, err.json(id)).as_bytes()).await?;
             let _ = stream.flush().await;
             stream.shutdown().await?;
         }
     }
 
-    while let Some(msg) = s_recv.recv().await {
-        let param = match msg {
-            RpcInnerMessage::Response(param) => param,
-            _ => Default::default(),
-        };
-        stream.write(format!("{}{}", res, param.to_string()).as_bytes()).await?;
-        let _ = stream.flush().await;
-        stream.shutdown().await?;
-        break;
+    loop {
+        if let Some(msg) = s_recv.recv().await {
+            let param = match msg {
+                RpcInnerMessage::Response(param) => param,
+                _ => Default::default(),
+            };
+            let _ = stream.write(format!("{}{}", res, param).as_bytes()).await?;
+            let _ = stream.flush().await;
+            stream.shutdown().await?;
+            break;
+        }
     }
 
     Ok(())

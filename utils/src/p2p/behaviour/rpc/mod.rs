@@ -142,7 +142,7 @@ pub enum RpcEvent {
 
 /// Possible failures occurring in the context of sending
 /// an outbound request and receiving the response.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum OutboundFailure {
     /// The request could not be sent because a dialing attempt failed.
     DialFailure,
@@ -179,7 +179,7 @@ impl std::error::Error for OutboundFailure {}
 
 /// Possible failures occurring in the context of receiving an
 /// inbound request and sending a response.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum InboundFailure {
     /// The inbound request timed out, either while reading the
     /// incoming request or before a response is sent, e.g. if
@@ -621,7 +621,7 @@ impl NetworkBehaviour for Rpc {
                 for request in pending {
                     self.pending_events
                         .push_back(NetworkBehaviourAction::GenerateEvent(RpcEvent::OutboundFailure {
-                            peer: peer,
+                            peer,
                             request_id: request.request_id,
                             error: OutboundFailure::DialFailure,
                         }));

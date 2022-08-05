@@ -20,14 +20,17 @@ use once_cell::sync::Lazy;
 use secp256k1::SecretKey;
 use serde_json::Value;
 use structopt::StructOpt;
-use subql_proxy_utils::request::{jsonrpc_request, proxy_request};
+use subql_proxy_utils::{
+    constants::AUTHORIZATION,
+    request::{jsonrpc_request, proxy_request},
+};
 use web3::{signing::SecretKeyRef, types::Address};
 
 #[cfg(feature = "p2p")]
 use subql_proxy_utils::p2p::libp2p::Multiaddr;
 
-const SEED_ADDR: &'static str = "/ip4/0.0.0.0/tcp/7000";
-const P2P_ADDR: &'static str = "/ip4/0.0.0.0/tcp/0";
+const SEED_ADDR: &str = "/ip4/0.0.0.0/tcp/7000";
+const P2P_ADDR: &str = "/ip4/0.0.0.0/tcp/0";
 
 pub static COMMAND: Lazy<CommandArgs> = Lazy::new(|| CommandLineArgs::from_args().parse());
 
@@ -41,7 +44,7 @@ impl IndexerNetwork {
         match self {
             IndexerNetwork::Url(url) => proxy_request("post", url, "open", "", state, vec![]).await,
             IndexerNetwork::P2p(pid) => {
-                let query = vec![Value::from(format!("{}", pid)), Value::from(state)];
+                let query = vec![Value::from(pid.to_string()), Value::from(state)];
                 jsonrpc_request(0, "http://127.0.0.1:8011", "state-channel", query).await
             }
         }
@@ -56,13 +59,13 @@ impl IndexerNetwork {
                     &format!("payg/{}", id),
                     "",
                     query,
-                    vec![("Authorization".to_owned(), state)],
+                    vec![(AUTHORIZATION.to_owned(), state)],
                 )
                 .await
             }
             IndexerNetwork::P2p(pid) => {
                 let query = vec![
-                    Value::from(format!("{}", pid)),
+                    Value::from(pid.to_string()),
                     Value::from(id),
                     Value::from(query),
                     Value::from(state),
@@ -108,7 +111,7 @@ pub struct CommandLineArgs {
 impl CommandLineArgs {
     pub fn parse(self) -> CommandArgs {
         let indexer = if let Some(url) = self.indexer_url {
-            IndexerNetwork::Url(url.clone())
+            IndexerNetwork::Url(url)
         } else {
             IndexerNetwork::P2p(self.indexer_p2p.unwrap())
         };
@@ -124,8 +127,8 @@ impl CommandLineArgs {
             port: self.port,
             dev: self.dev,
             debug: self.debug,
-            indexer: indexer,
-            p2p: p2p,
+            indexer,
+            p2p,
             contract: self.contract.parse().unwrap(),
             signer: SecretKey::from_slice(&hex::decode(&self.signer).unwrap()).unwrap(),
         }

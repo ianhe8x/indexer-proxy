@@ -16,23 +16,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use axum::{
+    async_trait,
+    extract::{FromRequest, RequestParts},
+    http::header::AUTHORIZATION,
+};
 use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use subql_proxy_utils::{
-    eip712::recover_signer,
-    error::Error,
-    types::{Result, WebResult},
-};
-use warp::{
-    filters::header::headers_cloned,
-    http::header::{HeaderMap, HeaderValue, AUTHORIZATION},
-    reject, Filter, Rejection,
-};
+use subql_proxy_utils::{eip712::recover_signer, error::Error, types::Result};
 
 use crate::cli::COMMAND;
 
-const BEARER: &str = "Bearer ";
 // FIXME: use `secret_key` from commandline args
 const JWT_SECRET: &[u8] = b"secret";
 
@@ -63,10 +58,8 @@ struct Claims {
     /// issue timestamp
     pub iat: i64,
     /// token expiration
-    exp: i64,
+    pub exp: i64,
 }
-
-type RequestHeader = HeaderMap<HeaderValue>;
 
 pub fn create_jwt(payload: Payload) -> Result<String> {
     let expiration = Utc::now()
@@ -90,50 +83,45 @@ pub fn create_jwt(payload: Payload) -> Result<String> {
     encode(&header, &claims, &EncodingKey::from_secret(JWT_SECRET)).map_err(|_| Error::JWTTokenCreationError)
 }
 
-pub fn with_auth() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
-    headers_cloned()
-        .map(move |headers: RequestHeader| (headers))
-        .and_then(authorize)
-}
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct AuthQuery(pub String);
 
-async fn authorize(headers: RequestHeader) -> WebResult<String> {
-    if !COMMAND.auth() {
-        return Ok(String::from(""));
-    }
+#[async_trait]
+impl<B> FromRequest<B> for AuthQuery
+where
+    B: Send,
+{
+    type Rejection = Error;
 
-    match jwt_from_header(&headers) {
-        Ok(jwt) => {
-            let decoded = decode::<Claims>(
-                &jwt,
-                &DecodingKey::from_secret(JWT_SECRET),
-                &Validation::new(Algorithm::HS512),
-            )
-            .map_err(|_| reject::custom(Error::JWTTokenError))?;
+    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+        // Get authorisation header
+        let authorisation = req
+            .headers()
+            .get(AUTHORIZATION)
+            .ok_or(Error::NoPermissionError)?
+            .to_str()
+            .map_err(|_| Error::NoPermissionError)?;
 
-            if decoded.claims.exp < Utc::now().timestamp_millis() {
-                return Err(reject::custom(Error::JWTTokenExpiredError));
-            }
+        // Check that is bearer and jwt
+        let split = authorisation.split_once(' ');
+        let jwt = match split {
+            Some((name, contents)) if name == "Bearer" => Ok(contents),
+            _ => Err(Error::InvalidAuthHeaderError),
+        }?;
 
-            Ok(decoded.claims.deployment_id)
+        let decoded = decode::<Claims>(
+            jwt,
+            &DecodingKey::from_secret(JWT_SECRET),
+            &Validation::new(Algorithm::HS512),
+        )
+        .map_err(|_| Error::JWTTokenError)?;
+
+        if decoded.claims.exp < Utc::now().timestamp_millis() {
+            return Err(Error::JWTTokenExpiredError);
         }
-        Err(e) => return Err(reject::custom(e)),
-    }
-}
 
-fn jwt_from_header(headers: &HeaderMap<HeaderValue>) -> Result<String> {
-    let header = match headers.get(AUTHORIZATION) {
-        Some(v) => v,
-        None => return Err(Error::NoPermissionError),
-    };
-    let auth_header = match std::str::from_utf8(header.as_bytes()) {
-        Ok(v) => v,
-        Err(_) => return Err(Error::NoPermissionError),
-    };
-    if !auth_header.starts_with(BEARER) {
-        return Err(Error::InvalidAuthHeaderError);
+        Ok(AuthQuery(decoded.claims.deployment_id))
     }
-
-    Ok(auth_header.trim_start_matches(BEARER).to_owned())
 }
 
 fn _verify_message(payload: &Payload) -> Result<bool> {

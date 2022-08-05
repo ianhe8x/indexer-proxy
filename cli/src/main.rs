@@ -44,14 +44,14 @@ use web3::{
 //const LOCAL_ENDPOINT: &'static str = "http://127.0.0.1:8545";
 //const TESTNET_ENDPOINT: &'static str = "https://sqtn.api.onfinality.io/public";
 const SLEEP: u64 = 2;
-const COORDINATOR_URL: &'static str = "http://127.0.0.1:8000/graphql";
-const CONSUMER_PROXY: &'static str = "http://127.0.0.1:8010";
+const COORDINATOR_URL: &str = "http://127.0.0.1:8000/graphql";
+const CONSUMER_PROXY: &str = "http://127.0.0.1:8010";
 
 // Init mnemonic: test test test test test test test test test test test junk
-const MINER: &'static str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-const INDEXER: &'static str = "ea6c44ac03bff858b476bba40716402b03e41b8e97e276d1baec7c37d42484a0";
-const CONTROLLER: &'static str = "689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd";
-const CONSUMER: &'static str = "de9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0";
+const MINER: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const INDEXER: &str = "ea6c44ac03bff858b476bba40716402b03e41b8e97e276d1baec7c37d42484a0";
+const CONTROLLER: &str = "689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd";
+const CONSUMER: &str = "de9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0";
 
 /// Command of the consumer and indexer script.
 /// Run `cargo run`
@@ -186,19 +186,16 @@ async fn main() {
                 .query("channel", (id,), None, Options::default(), None)
                 .await
                 .unwrap();
-            match result.0 {
-                Token::Tuple(data) => {
-                    let count: U256 = data[3].clone().into_uint().unwrap().into();
-                    let amount: U256 = data[4].clone().into_uint().unwrap().into();
-                    let expiration: U256 = data[5].clone().into_uint().unwrap().into();
-                    println!("State Channel Status: {}", data[0]);
-                    println!(" Indexer:  0x{}", data[1]);
-                    println!(" Consumer: 0x{}", data[2]);
-                    println!(" Count On-chain: {:?}", count);
-                    println!(" Amount:         {:?}", amount);
-                    println!(" Expiration:     {:?}", expiration);
-                }
-                _ => {}
+            if let Token::Tuple(data) = result.0 {
+                let count: U256 = data[3].clone().into_uint().unwrap();
+                let amount: U256 = data[4].clone().into_uint().unwrap();
+                let expiration: U256 = data[5].clone().into_uint().unwrap();
+                println!("State Channel Status: {}", data[0]);
+                println!(" Indexer:  0x{}", data[1]);
+                println!(" Consumer: 0x{}", data[2]);
+                println!(" Count On-chain: {:?}", count);
+                println!(" Amount:         {:?}", amount);
+                println!(" Expiration:     {:?}", expiration);
             }
         }
     }
@@ -234,7 +231,7 @@ async fn init(
     let reader = std::io::BufReader::new(file);
     let list: serde_json::Value = serde_json::from_reader(reader).unwrap();
     let mut contracts = HashMap::new();
-    for name in vec![
+    for name in [
         "SQToken",
         "StateChannel",
         "IndexerRegistry",
@@ -251,7 +248,7 @@ async fn init(
             Contract::from_json(
                 web3.eth(),
                 list[name]["address"].as_str().unwrap().parse().unwrap(),
-                &serde_json::to_string(&contract["abi"]).unwrap().as_bytes(),
+                serde_json::to_string(&contract["abi"]).unwrap().as_bytes(),
             )
             .unwrap(),
         );
@@ -357,7 +354,7 @@ async fn register_indexer(
     controller: &SecretKey,
     amount: u128,
 ) {
-    let indexer = SecretKeyRef::new(&sk);
+    let indexer = SecretKeyRef::new(sk);
     let address = indexer.address();
     println!("Register Indexer: {:?} ...", indexer.address());
     let result: bool = contract
@@ -387,7 +384,7 @@ async fn register_indexer(
         let tx = TransactionParameters {
             to: Some(contract.address()),
             data: Bytes(fn_data),
-            gas: gas,
+            gas,
             ..Default::default()
         };
 
@@ -439,7 +436,7 @@ async fn register_indexer(
         let tx = TransactionParameters {
             to: Some(contract.address()),
             data: Bytes(fn_data),
-            gas: gas,
+            gas,
             ..Default::default()
         };
 
@@ -461,7 +458,7 @@ async fn register_indexer(
   }}
 }}
 "#,
-        format!("{}", controller.display_secret())
+        controller.display_secret()
     );
     let query = json!({ "query": mdata });
     graphql_request(COORDINATOR_URL, &query).await.unwrap();
@@ -477,8 +474,8 @@ async fn register_consumer_proxy(
 ) {
     let contract = &contracts["ConsumerProxy"];
     let sqtoken = &contracts["SQToken"];
-    let miner = SecretKeyRef::new(&miner_sk);
-    let consumer = SecretKeyRef::new(&consumer_sk);
+    let miner = SecretKeyRef::new(miner_sk);
+    let consumer = SecretKeyRef::new(consumer_sk);
     let address = consumer.address();
     let miner_addr = miner.address();
 
@@ -503,7 +500,7 @@ async fn register_consumer_proxy(
         let tx = TransactionParameters {
             to: Some(contract.address()),
             data: Bytes(fn_data),
-            gas: gas,
+            gas,
             ..Default::default()
         };
 
@@ -538,7 +535,7 @@ async fn register_consumer_proxy(
     let tx = TransactionParameters {
         to: Some(contract.address()),
         data: Bytes(fn_data),
-        gas: gas,
+        gas,
         ..Default::default()
     };
 
@@ -563,15 +560,16 @@ async fn open_channel_with_consumer(
     let consumer = SecretKeyRef::new(sk).address();
     let mut rng = ChaChaRng::from_entropy();
     let mut id = [0u64; 4]; // u256
-    for i in 0..4 {
-        id[i] = rng.next_u64();
-    }
+    id[0] = rng.next_u64();
+    id[1] = rng.next_u64();
+    id[2] = rng.next_u64();
+    id[3] = rng.next_u64();
     let channel = U256(id);
     let amount = U256::from(amount);
     let expiration = U256::from(expiration);
 
-    let deployment_id = if deployment.starts_with("0x") {
-        hex::decode(&deployment[2..]).unwrap()
+    let deployment_id = if let Some(bytes) = deployment.strip_prefix("0x") {
+        hex::decode(bytes).unwrap()
     } else {
         // default is bs58
         bs58::decode(deployment).into_vec().unwrap()

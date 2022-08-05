@@ -42,6 +42,8 @@ use super::protocol::{RequestProtocol, ResponseProtocol};
 use super::{Request, RequestId, Response, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use crate::p2p::primitives::SubqueryProtocol;
 
+type InBoundResult = Result<((RequestId, Request), Sender<Response>), RecvError>;
+
 /// A connection handler of a `Rpc` protocol.
 pub struct RpcHandler {
     /// The supported inbound protocols.
@@ -61,7 +63,7 @@ pub struct RpcHandler {
     /// Outbound upgrades waiting to be emitted as an `OutboundSubstreamRequest`.
     outbound: VecDeque<RequestProtocol>,
     /// Inbound upgrades waiting for the incoming request.
-    inbound: FuturesUnordered<BoxFuture<'static, Result<((RequestId, Request), Sender<Response>), RecvError>>>,
+    inbound: FuturesUnordered<BoxFuture<'static, InBoundResult>>,
     inbound_request_id: Arc<AtomicU64>,
 }
 

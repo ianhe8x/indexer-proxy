@@ -8,7 +8,9 @@ default = ["p2p"]
 p2p = ["subql-proxy-utils/p2p"]
 
 [dependencies]
+subql-proxy-utils = { version = "0.2",  path = "../utils" }
 async-trait = "0.1"
+axum = "0.5"
 bs58 = "0.4"
 chrono = "0.4"
 hex = "0.4"
@@ -25,10 +27,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.16"
+tower-http = { version = "0.3", features = ["cors"] }
 url = {version = "2.2" }
-warp = "0.3"
 web3 = "0.18"
-
-
-
-subql-proxy-utils = { version = "0.2",  path = "../utils" }
