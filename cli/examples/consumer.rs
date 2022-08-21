@@ -65,12 +65,12 @@ fn help() {
 
 struct StateChannel {
     id: U256,
-    count: U256,
-    amount: U256,
-    _expiration: U256,
     indexer: Address,
     consumer: Address,
-    last_price: U256,
+    total: U256,
+    spent: U256,
+    price: U256,
+    _expiration: U256,
     last_final: bool,
     last_indexer_sign: Signature,
     last_consumer_sign: Signature,
@@ -116,8 +116,7 @@ async fn send_state(
 ) {
     let msg = encode(&[
         state.id.into_token(),
-        state.count.into_token(),
-        state.last_price.into_token(),
+        state.spent.into_token(),
         state.last_final.into_token(),
     ]);
     let mut bytes = "\x19Ethereum Signed Message:\n32".as_bytes().to_vec();
@@ -132,8 +131,7 @@ async fn send_state(
     let call_params = Token::Tuple(vec![
         state.id.into_token(),
         state.last_final.into_token(),
-        state.count.into_token(),
-        state.last_price.into_token(),
+        state.spent.into_token(),
         convert_sign_to_bytes(&state.last_indexer_sign).into_token(),
         convert_sign_to_bytes(&state.last_consumer_sign).into_token(),
     ]);
@@ -407,7 +405,7 @@ async fn main() {
                             Ok(data) => {
                                 let state = OpenState::from_json(&data).unwrap();
                                 println!("channelId:  {:#X}", state.channel_id);
-                                println!("amount:     {}", state.amount);
+                                println!("total:     {}", state.total);
                                 println!("expiration: {}", state.expiration);
                                 println!("indexer:    {:?}", state.indexer);
                                 println!("consumer:   {:?}", state.consumer);
@@ -415,12 +413,12 @@ async fn main() {
                                 cid = channels.len();
                                 channels.push(StateChannel {
                                     id: state.channel_id,
-                                    count: U256::from(0u64),
-                                    amount: state.amount,
-                                    _expiration: state.expiration,
                                     indexer: state.indexer,
                                     consumer: state.consumer,
-                                    last_price: state.next_price,
+                                    total: state.total,
+                                    spent: U256::from(0u64),
+                                    price: state.price,
+                                    _expiration: state.expiration,
                                     last_final: false,
                                     last_indexer_sign: state.indexer_sign,
                                     last_consumer_sign: state.consumer_sign,
@@ -493,14 +491,14 @@ async fn main() {
                             .unwrap();
                         match result.0 {
                             Token::Tuple(data) => {
-                                let count: U256 = data[3].clone().into_uint().unwrap().into();
-                                let amount: U256 = data[4].clone().into_uint().unwrap().into();
+                                let total: U256 = data[3].clone().into_uint().unwrap().into();
+                                let spent: U256 = data[4].clone().into_uint().unwrap().into();
                                 let expiration: U256 = data[5].clone().into_uint().unwrap().into();
                                 println!("State Channel Status: {}", data[0]);
                                 println!(" Indexer:  0x{}", data[1]);
                                 println!(" Consumer: 0x{}", data[2]);
-                                println!(" Count On-chain: {:?}, Now: {}", count, channels[cid].count);
-                                println!(" Amount:         {:?}", amount);
+                                println!(" Count On-chain: {:?}, Now: {}", spent, channels[cid].spent);
+                                println!(" Total:         {:?}", total);
                                 println!(" Expiration:     {:?}", expiration);
                             }
                             _ => {}
@@ -514,24 +512,24 @@ async fn main() {
                             .unwrap();
                         match result.0 {
                             Token::Tuple(data) => {
-                                let count: U256 = data[3].clone().into_uint().unwrap().into();
-                                let amount: U256 = data[4].clone().into_uint().unwrap().into();
+                                let total: U256 = data[3].clone().into_uint().unwrap().into();
+                                let spent: U256 = data[4].clone().into_uint().unwrap().into();
                                 let expiration: U256 = data[5].clone().into_uint().unwrap().into();
                                 println!("State Channel Status: {}", data[0]);
                                 println!(" Indexer:  0x{}", data[1]);
                                 println!(" Consumer: 0x{}", data[2]);
-                                println!(" On-chain Count:  {}", count);
-                                println!(" Amount:          {}", amount);
+                                println!(" On-chain Count:  {}", spent);
+                                println!(" Total:          {}", total);
                                 println!(" Expiration:      {}", expiration);
                                 cid = channels.len();
                                 channels.push(StateChannel {
                                     id: channel_id,
-                                    count: count,
-                                    amount: amount,
+                                    total: total,
+                                    spent: spent,
                                     _expiration: expiration,
                                     indexer: data[1].clone().into_address().unwrap(),
                                     consumer: data[2].clone().into_address().unwrap(),
-                                    last_price: U256::from(10u64),
+                                    price: U256::from(10u64),
                                     last_final: false,
                                     last_indexer_sign: default_sign(),
                                     last_consumer_sign: default_sign(),
@@ -554,15 +552,14 @@ async fn main() {
                     continue;
                 }
 
-                let is_final = channels[cid].count * channels[cid].last_price >= channels[cid].amount;
-                let next_count = channels[cid].count + U256::from(1u64);
-                println!("Next count: {}", next_count);
+                let is_final = channels[cid].spent + channels[cid].price >= channels[cid].total;
+                let next_spent = channels[cid].spent + channels[cid].price;
+                println!("Next spent: {}", next_spent);
                 let state = QueryState::consumer_generate(
                     channels[cid].id,
                     channels[cid].indexer,
                     channels[cid].consumer,
-                    next_count,
-                    channels[cid].last_price,
+                    next_spent,
                     is_final,
                     SecretKeyRef::new(&consumer_sk),
                 )
@@ -595,13 +592,14 @@ async fn main() {
                         println!("\x1b[94m>>> Result: {}\x1b[00m", query);
                         let state = QueryState::from_json(&data).unwrap();
 
-                        channels[cid].count = state.count;
-                        channels[cid].last_price = state.next_price;
+                        let check = (state.spent - channels[cid].spent) / channels[cid].price > 5i32.into();
+
+                        channels[cid].spent = state.spent;
                         channels[cid].last_final = state.is_final;
                         channels[cid].last_indexer_sign = state.indexer_sign;
                         channels[cid].last_consumer_sign = state.consumer_sign;
 
-                        if state.count % U256::from(5u64) == U256::from(0u64) {
+                        if check {
                             println!("Every 5 times will auto checkpoint...");
                             send_state(
                                 &web3,

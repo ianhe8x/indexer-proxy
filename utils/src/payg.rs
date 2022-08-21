@@ -36,13 +36,13 @@ pub struct OpenState {
     pub channel_id: U256,
     pub indexer: Address,
     pub consumer: Address,
-    pub amount: U256,
+    pub total: U256,
     pub expiration: U256,
     pub deployment_id: [u8; 32],
     pub callback: Vec<u8>,
     pub indexer_sign: Signature,
     pub consumer_sign: Signature,
-    pub next_price: U256,
+    pub price: U256,
 }
 
 impl OpenState {
@@ -50,7 +50,7 @@ impl OpenState {
         channel_id: Option<U256>,
         indexer: Address,
         consumer: Address,
-        amount: U256,
+        total: U256,
         expiration: U256,
         deployment_id: [u8; 32],
         callback: Vec<u8>,
@@ -71,13 +71,13 @@ impl OpenState {
             channel_id,
             indexer,
             consumer,
-            amount,
+            total,
             expiration,
             deployment_id,
             callback,
             consumer_sign: default_sign(),
             indexer_sign: default_sign(),
-            next_price: U256::from(0u64),
+            price: U256::from(0u64),
         };
         state.sign(key, true)?;
         Ok(state)
@@ -88,7 +88,6 @@ impl OpenState {
             self.channel_id.into_token(),
             self.indexer.into_token(),
             self.consumer.into_token(),
-            self.amount.into_token(),
             self.expiration.into_token(),
             self.deployment_id.into_token(),
             self.callback.clone().into_token(),
@@ -108,7 +107,7 @@ impl OpenState {
             self.channel_id.into_token(),
             self.indexer.into_token(),
             self.consumer.into_token(),
-            self.amount.into_token(),
+            self.total.into_token(),
             self.expiration.into_token(),
             self.deployment_id.into_token(),
             self.callback.clone().into_token(),
@@ -141,7 +140,7 @@ impl OpenState {
             .ok_or(Error::InvalidSerialize)?
             .parse()
             .map_err(|_e| Error::InvalidSerialize)?;
-        let amount = U256::from_dec_str(params["amount"].as_str().ok_or(Error::InvalidSerialize)?)
+        let total = U256::from_dec_str(params["total"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let expiration = U256::from_dec_str(params["expiration"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
@@ -158,19 +157,19 @@ impl OpenState {
             convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
         let consumer_sign: Signature =
             convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
-        let next_price = U256::from_dec_str(params["nextPrice"].as_str().ok_or(Error::InvalidSerialize)?)
+        let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         Ok(Self {
             channel_id,
             indexer,
             consumer,
-            amount,
+            total,
             expiration,
             deployment_id,
             callback,
             indexer_sign,
             consumer_sign,
-            next_price,
+            price,
         })
     }
 
@@ -179,13 +178,13 @@ impl OpenState {
             "channelId": format!("{:#X}", self.channel_id),
             "indexer": format!("{:?}", self.indexer),
             "consumer": format!("{:?}", self.consumer),
-            "amount": self.amount.to_string(),
+            "total": self.total.to_string(),
             "expiration": self.expiration.to_string(),
             "deploymentId": hex::encode(&self.deployment_id),
             "callback": hex::encode(&self.callback),
             "indexerSign": convert_sign_to_string(&self.indexer_sign),
             "consumerSign": convert_sign_to_string(&self.consumer_sign),
-            "nextPrice": self.next_price.to_string(),
+            "price": self.price.to_string(),
         })
     }
 }
@@ -194,12 +193,10 @@ pub struct QueryState {
     pub channel_id: U256,
     pub indexer: Address,
     pub consumer: Address,
-    pub count: U256,
-    pub price: U256,
+    pub spent: U256,
     pub is_final: bool,
     pub indexer_sign: Signature,
     pub consumer_sign: Signature,
-    pub next_price: U256,
 }
 
 impl QueryState {
@@ -207,8 +204,7 @@ impl QueryState {
         channel_id: U256,
         indexer: Address,
         consumer: Address,
-        count: U256,
-        price: U256,
+        spent: U256,
         is_final: bool,
         key: SecretKeyRef,
     ) -> Result<Self, Error> {
@@ -216,12 +212,10 @@ impl QueryState {
             channel_id,
             indexer,
             consumer,
-            count,
-            price,
+            spent,
             is_final,
             consumer_sign: default_sign(),
             indexer_sign: default_sign(),
-            next_price: U256::from(0u64),
         };
         state.sign(key, true)?;
         Ok(state)
@@ -230,8 +224,7 @@ impl QueryState {
     pub fn recover(&self) -> Result<(Address, Address), Error> {
         let msg = encode(&[
             self.channel_id.into_token(),
-            self.count.into_token(),
-            self.price.into_token(),
+            self.spent.into_token(),
             self.is_final.into_token(),
         ]);
         let mut bytes = "\x19Ethereum Signed Message:\n32".as_bytes().to_vec();
@@ -247,8 +240,7 @@ impl QueryState {
     pub fn sign(&mut self, key: SecretKeyRef, is_consumer: bool) -> Result<(), Error> {
         let msg = encode(&[
             self.channel_id.into_token(),
-            self.count.into_token(),
-            self.price.into_token(),
+            self.spent.into_token(),
             self.is_final.into_token(),
         ]);
         let mut bytes = "\x19Ethereum Signed Message:\n32".as_bytes().to_vec();
@@ -279,27 +271,21 @@ impl QueryState {
             .ok_or(Error::InvalidSerialize)?
             .parse()
             .map_err(|_e| Error::InvalidSerialize)?;
-        let count = U256::from_dec_str(params["count"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::InvalidSerialize)?)
+        let spent = U256::from_dec_str(params["spent"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let is_final = params["isFinal"].as_bool().ok_or(Error::InvalidSerialize)?;
         let indexer_sign: Signature =
             convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
         let consumer_sign: Signature =
             convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
-        let next_price = U256::from_dec_str(params["nextPrice"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
         Ok(Self {
             channel_id,
             indexer,
             consumer,
-            count,
-            price,
+            spent,
             is_final,
             indexer_sign,
             consumer_sign,
-            next_price,
         })
     }
 
@@ -308,12 +294,10 @@ impl QueryState {
             "channelId": format!("{:#X}", self.channel_id),
             "indexer": format!("{:?}", self.indexer),
             "consumer": format!("{:?}", self.consumer),
-            "count": self.count.to_string(),
-            "price": self.price.to_string(),
+            "spent": self.spent.to_string(),
             "isFinal": self.is_final,
             "indexerSign": convert_sign_to_string(&self.indexer_sign),
             "consumerSign": convert_sign_to_string(&self.consumer_sign),
-            "nextPrice": self.next_price.to_string(),
         })
     }
 }

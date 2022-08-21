@@ -25,15 +25,15 @@ pub struct StateChannel {
     status: ChannelStatus,
     indexer: Address,
     consumer: Address,
-    current_count: U256,
-    onchain_count: U256,
-    remote_count: U256,
-    balance: U256,
+    total: U256,
+    spent: U256,
+    onchain: U256,
+    remote: U256,
+    price: U256,
     expiration_at: U256,
     challenge_at: U256,
     deployment_id: [u8; 32],
     last_final: bool,
-    last_price: U256,
     last_indexer_sign: Signature,
     last_consumer_sign: Signature,
 }
@@ -58,15 +58,15 @@ impl StateChannel {
             id: state.channel_id,
             indexer: state.indexer,
             consumer: state.consumer,
-            balance: state.amount,
+            total: state.total,
             expiration_at: state.expiration,
             status: ChannelStatus::Open,
-            current_count: U256::from(0u64),
-            onchain_count: U256::from(0u64),
-            remote_count: U256::from(0u64),
+            spent: U256::from(0u64),
+            onchain: U256::from(0u64),
+            remote: U256::from(0u64),
+            price: state.price,
             challenge_at: U256::from(0u64),
             deployment_id: state.deployment_id,
-            last_price: state.next_price,
             last_final: false,
             last_indexer_sign: default_sign(),
             last_consumer_sign: default_sign(),
@@ -77,17 +77,9 @@ impl StateChannel {
 
     pub fn next_query(self, sk: SecretKeyRef) -> Result<QueryState, Error> {
         let is_final = false; // TODO more
-        let count = self.current_count + 1;
+        let spent = self.spent + self.price;
 
-        QueryState::consumer_generate(
-            self.id,
-            self.indexer,
-            self.consumer,
-            count,
-            self.last_price,
-            is_final,
-            sk,
-        )
+        QueryState::consumer_generate(self.id, self.indexer, self.consumer, spent, is_final, sk)
     }
 
     pub async fn renew(cid: U256, state: QueryState) {
@@ -101,12 +93,11 @@ impl StateChannel {
         drop(channels);
 
         if let Some(channel) = CHANNELS.write().await.get_mut(&id) {
-            // TODO if next_price != last_price, checkpoint chain.
-            // TODO adjust the count number if current_count != remote_count.
+            // TODO if spent != old spent, checkpoint chain.
+            // TODO adjust the count number if spent != remote.
 
-            channel.current_count = state.count;
-            channel.remote_count = state.count;
-            channel.last_price = state.next_price;
+            channel.spent = state.spent;
+            channel.remote = state.spent;
             channel.last_final = state.is_final;
             channel.last_indexer_sign = state.indexer_sign;
             channel.last_consumer_sign = state.consumer_sign;
@@ -121,15 +112,15 @@ impl Clone for StateChannel {
             status: self.status,
             indexer: self.indexer,
             consumer: self.consumer,
-            current_count: self.current_count,
-            onchain_count: self.onchain_count,
-            remote_count: self.remote_count,
-            balance: self.balance,
+            total: self.total,
+            spent: self.spent,
+            onchain: self.onchain,
+            remote: self.remote,
+            price: self.price,
             expiration_at: self.expiration_at,
             challenge_at: self.challenge_at,
             deployment_id: self.deployment_id,
             last_final: self.last_final,
-            last_price: self.last_price,
             last_indexer_sign: convert_string_to_sign(&convert_sign_to_string(&self.last_indexer_sign)),
             last_consumer_sign: convert_string_to_sign(&convert_sign_to_string(&self.last_consumer_sign)),
         }

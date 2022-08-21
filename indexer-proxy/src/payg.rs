@@ -53,7 +53,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
 
     let mdata = format!(
         r#"mutation {{
-  channelOpen(id:"{:#X}", indexer:"{:?}", consumer:"{:?}", balance:{}, expiration:{}, deploymentId:"0x{}", callback:"0x{}", lastIndexerSign:"0x{}", lastConsumerSign:"0x{}") {{
+  channelOpen(id:"{:#X}", indexer:"{:?}", consumer:"{:?}", total:{}, expiration:{}, deploymentId:"0x{}", callback:"0x{}", lastIndexerSign:"0x{}", lastConsumerSign:"0x{}") {{
     lastPrice
   }}
 }}
@@ -61,7 +61,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
         state.channel_id,
         state.indexer,
         state.consumer,
-        state.amount,
+        state.total,
         state.expiration,
         hex::encode(&state.deployment_id),
         hex::encode(&state.callback),
@@ -78,20 +78,18 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
         .ok_or(Error::ServiceException)?
         .get("channelOpen")
         .ok_or(Error::ServiceException)?
-        .get("lastPrice")
+        .get("price")
         .ok_or(Error::ServiceException)?
         .as_i64()
         .ok_or(Error::ServiceException)?;
-    state.next_price = U256::from(price);
+    state.price = U256::from(price);
 
     Ok(state.to_json())
 }
 
 pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value), Error> {
     let query_url = get_project(project)?;
-
     let mut state = QueryState::from_json(state)?;
-    state.next_price = U256::from(PRICE);
 
     let account = ACCOUNT.read().await;
     let key = SecretKeyRef::new(&account.controller_sk);
@@ -117,13 +115,12 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let url = COMMAND.service_url();
     let mdata = format!(
         r#"mutation {{
-  channelUpdate(id:"{:#X}", count:{}, isFinal:{}, price:{}, indexerSign:"0x{}", consumerSign:"0x{}") {{ id }}
+  channelUpdate(id:"{:#X}", spent:{}, isFinal:{}, indexerSign:"0x{}", consumerSign:"0x{}") {{ id }}
 }}
 "#,
         state.channel_id,
-        state.count,
+        state.spent,
         state.is_final,
-        state.price,
         convert_sign_to_string(&state.indexer_sign),
         convert_sign_to_string(&state.consumer_sign)
     );

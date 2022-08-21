@@ -24,7 +24,7 @@ use axum::{
 use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use subql_proxy_utils::{eip712::recover_signer, error::Error, types::Result};
+use subql_proxy_utils::{error::Error, types::Result};
 
 use crate::cli::COMMAND;
 
@@ -35,7 +35,7 @@ const JWT_SECRET: &[u8] = b"secret";
 pub struct Payload {
     /// indexer address
     pub indexer: String,
-    /// indexer address
+    /// consumer address
     pub consumer: Option<String>,
     /// service agreement contract address
     pub agreement: Option<String>,
@@ -122,18 +122,4 @@ where
 
         Ok(AuthQuery(decoded.claims.deployment_id))
     }
-}
-
-fn _verify_message(payload: &Payload) -> Result<bool> {
-    let message = format!("{}{}{}", payload.indexer, payload.deployment_id, payload.timestamp);
-    let signer = recover_signer(message, &payload.signature);
-
-    debug!("compare pubkey: {}", signer);
-
-    // TODO: verify message basing on the payload
-    // 1. if signer is indexer itself, return the token
-    // 2. if singer is consumer, check whether the agreement is expired and the it is consistent with
-    // `indexer` and `consumer`
-
-    Ok(signer == payload.indexer.as_str().to_lowercase())
 }

@@ -26,6 +26,6 @@ pub fn recover_signer(message: String, signature: &str) -> String {
     let msg = eth_message(message);
     let sig = hex::decode(signature).unwrap();
     let recover_id = sig[64] as i32 - 27;
-    let pubkey = recover(&msg, &sig[..64], recover_id).unwrap();
-    format!("{:02X?}", pubkey)
+    let address = recover(&msg, &sig[..64], recover_id).unwrap();
+    format!("{:02X?}", address)
 }
