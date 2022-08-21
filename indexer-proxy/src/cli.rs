@@ -79,6 +79,10 @@ impl CommandLineArgs {
         &self.service_url
     }
 
+    pub fn graphql_url(&self) -> String {
+        self.service_url.clone() + "/graphql"
+    }
+
     pub fn decrypt(&self, iv: &str, ciphertext: &str) -> Result<String, Error> {
         let iv = hex::decode(iv).map_err(|_| Error::InvalidEncrypt)?;
         let ctext = hex::decode(ciphertext).map_err(|_| Error::InvalidEncrypt)?;

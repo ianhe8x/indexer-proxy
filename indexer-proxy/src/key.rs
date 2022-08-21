@@ -113,7 +113,7 @@ pub async fn init_projects(url: &str) {
 
 pub fn subscribe() {
     thread::spawn(move || {
-        let url = COMMAND.service_url();
+        let url = COMMAND.graphql_url();
         subscribe_project_change(url.as_str());
     });
 }
@@ -123,10 +123,9 @@ fn subscribe_project_change(url: &str) {
     websocket_url.replace_range(0..4, "ws");
 
     let mut request = websocket_url.into_client_request().unwrap();
-    request.headers_mut().insert(
-        "Sec-WebSocket-Protocol",
-        HeaderValue::from_str("graphql-ws").unwrap(),
-    );
+    request
+        .headers_mut()
+        .insert("Sec-WebSocket-Protocol", HeaderValue::from_str("graphql-ws").unwrap());
     let (mut socket, _) = connect(request).unwrap();
     info!("Connected to the websocket server");
 

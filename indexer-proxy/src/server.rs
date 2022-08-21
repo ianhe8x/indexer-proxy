@@ -26,8 +26,14 @@ use axum::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use std::time::{SystemTime, UNIX_EPOCH};
 use subql_proxy_utils::{
-    constants::HEADERS, eip712::recover_signer, error::Error, query::METADATA_QUERY, request::graphql_request,
+    constants::HEADERS,
+    eip712::recover_signer,
+    error::Error,
+    query::METADATA_QUERY,
+    request::{graphql_request, proxy_request},
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -88,9 +94,32 @@ pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>,
         match (&payload.consumer, &payload.agreement) {
             (Some(consumer), Some(agreement)) => {
                 if signer == consumer.to_lowercase() {
-                    println!("consumer: {}, agreement: {}", consumer, agreement);
-                    // TODO query closed agreement information.
-                    true
+                    let res = proxy_request(
+                        "get",
+                        COMMAND.service_url(),
+                        &format!("/agreements/{}", agreement),
+                        "",
+                        "".to_owned(),
+                        vec![],
+                    )
+                    .await;
+                    if let Ok(data) = res {
+                        match (data.get("consumer"), data.get("startDate"), data.get("period")) {
+                            (Some(sac), Some(sstart), Some(speriod)) => {
+                                let ac = sac.as_str().unwrap_or("");
+                                let start = sstart.as_i64().unwrap_or(0);
+                                let period = speriod.as_i64().unwrap_or(0);
+                                let now = SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .map(|s| s.as_secs())
+                                    .unwrap_or(0) as i64;
+                                now > (start + period) && ac.to_lowercase() == signer
+                            }
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }

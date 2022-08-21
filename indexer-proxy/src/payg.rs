@@ -49,7 +49,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
 
     let (_, _consumer) = state.recover()?;
 
-    let url = COMMAND.service_url();
+    let url = COMMAND.graphql_url();
 
     let mdata = format!(
         r#"mutation {{
@@ -70,7 +70,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
     );
 
     let query = json!({ "query": mdata });
-    let result = graphql_request(url, &query)
+    let result = graphql_request(&url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
     let price = result
@@ -112,7 +112,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     }?;
 
     // query the state.
-    let url = COMMAND.service_url();
+    let url = COMMAND.graphql_url();
     let mdata = format!(
         r#"mutation {{
   channelUpdate(id:"{:#X}", spent:{}, isFinal:{}, indexerSign:"0x{}", consumerSign:"0x{}") {{ id }}
@@ -126,7 +126,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     );
 
     let query = json!({ "query": mdata });
-    let result = graphql_request(url, &query)
+    let result = graphql_request(&url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
     let _ = result.get("data").ok_or(Error::ServiceException)?;

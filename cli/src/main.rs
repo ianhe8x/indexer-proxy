@@ -237,7 +237,7 @@ async fn init(
         "IndexerRegistry",
         "Staking",
         "ConsumerProxy",
-        "ConsumerHoster",
+        "ConsumerHost",
     ] {
         let file = std::fs::File::open(format!("{}/{}.sol/{}.json", contract_path, name, name)).unwrap();
         let reader = std::io::BufReader::new(file);

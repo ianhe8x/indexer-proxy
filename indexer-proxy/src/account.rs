@@ -49,9 +49,9 @@ impl Default for Account {
 pub static ACCOUNT: Lazy<RwLock<Account>> = Lazy::new(|| RwLock::new(Account::default()));
 
 pub async fn fetch_account_metadata() -> Result<()> {
-    let url = COMMAND.service_url();
+    let url = COMMAND.graphql_url();
     let query = json!({"query": "query { accountMetadata { indexer controller } }" });
-    let result = graphql_request(url, &query).await;
+    let result = graphql_request(&url, &query).await;
     let value = result.map_err(|_e| Error::InvalidServiceEndpoint)?;
     let indexer: Address = value
         .pointer("/data/accountMetadata/indexer")

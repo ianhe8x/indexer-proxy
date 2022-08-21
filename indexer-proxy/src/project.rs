@@ -99,12 +99,11 @@ pub async fn init_projects() {
 
 pub fn subscribe() {
     thread::spawn(move || {
-        subscribe_project_change(COMMAND.service_url());
+        subscribe_project_change(COMMAND.graphql_url());
     });
 }
 
-fn subscribe_project_change(url: &str) {
-    let mut websocket_url = url.to_owned();
+fn subscribe_project_change(mut websocket_url: String) {
     websocket_url.replace_range(0..4, "ws");
 
     let mut request = websocket_url.into_client_request().unwrap();

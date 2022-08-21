@@ -10,7 +10,7 @@
 ### Start `proxy server`
 
 - `cargo build`
-- `./target/debug/indexer-proxy --secret-key your-key --service-url http://127.0.0.1:8000/graphql`
+- `./target/debug/indexer-proxy --secret-key your-key --service-url http://127.0.0.1:8000`
 
 ### Output help menu
 

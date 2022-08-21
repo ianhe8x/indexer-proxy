@@ -11,7 +11,7 @@ services:
       - --port=8009
       - --host==0.0.0.0
       - --secret-key=qmbyd5hwac2jdcu
-      - --service-url=http://ec2-3-25-75-215.ap-southeast-2.compute.amazonaws.com:8000/graphql
+      - --service-url=http://ec2-3-25-75-215.ap-southeast-2.compute.amazonaws.com:8000
       - --debug
       - --dev
 networks:
