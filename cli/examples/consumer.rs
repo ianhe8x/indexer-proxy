@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::env::args;
 use std::path::PathBuf;
 use subql_proxy_utils::{
-    p2p::{libp2p::identity::Keypair, server::server, P2pHandler, Request, Response},
+    p2p::{libp2p::identity::Keypair, server::server, P2pHandler, Response},
     payg::{convert_sign_to_bytes, default_sign, OpenState, QueryState},
     request::{jsonrpc_request, proxy_request},
 };
@@ -82,8 +82,12 @@ pub struct ConsumerP2p;
 
 #[async_trait]
 impl P2pHandler for ConsumerP2p {
-    async fn request(_request: Request) -> Response {
-        todo!()
+    async fn channel_handle(_info: &str) -> Response {
+        Response::None
+    }
+
+    async fn info_handle() -> String {
+        "".to_owned()
     }
 
     async fn event() {

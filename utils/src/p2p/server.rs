@@ -24,6 +24,7 @@ use libp2p::{
     swarm::{handler::ConnectionHandlerUpgrErr, Swarm, SwarmBuilder, SwarmEvent},
     Multiaddr, PeerId,
 };
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error, net::SocketAddr};
 use tokio::{
     select,
@@ -42,6 +43,16 @@ use super::rpc::{
     rpc_channel, start as rpc_start, RpcConfig, RpcMessage,
 };
 use super::P2pHandler;
+
+pub enum GroupType {
+    Deployment,
+    Other,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum DeploymentEvent {
+    PriceRequest(RequestId),
+}
 
 pub async fn server<T: P2pHandler>(
     p2p_addr: Multiaddr,
@@ -76,6 +87,7 @@ pub async fn server<T: P2pHandler>(
 
     // store the sync requests. request_id => (rpc_id, is_ws)
     let mut sync_requests: HashMap<RequestId, (u64, bool)> = HashMap::new();
+    let mut groups: HashMap<GroupId, GroupType> = HashMap::new();
 
     loop {
         let res = select! {
@@ -96,7 +108,23 @@ pub async fn server<T: P2pHandler>(
                         RpcEvent::Message { peer: _, message } => match message {
                             NetworkRpcMessage::Request { request_id, request } => {
                                 debug!("Got request: {:?}", request);
-                                let res = T::request(request).await;
+                                // handle request
+                                let res = match request {
+                                    Request::StateChannel(infos) => T::channel_handle(&infos).await,
+                                    Request::Info => Response::Data(T::info_handle().await),
+                                    Request::Deployment(req, info) => {
+                                        let res = rpc_response(0, "deployment", RpcParam::from(info));
+                                        // handle info
+                                        if let Some((uid, is_ws)) = sync_requests.remove(&req) {
+                                            let _ = rpc_send.send(RpcMessage(uid, res, is_ws)).await;
+                                        } else {
+                                            // send to all connected ws.
+                                            let _ = rpc_send.send(RpcMessage(0, res, true)).await;
+                                        }
+                                        Response::None
+                                    }
+                                };
+
                                 let _ = swarm.behaviour_mut().rpc.response(request_id, res);
                             }
                             NetworkRpcMessage::Response { request_id, response } => {
@@ -107,6 +135,7 @@ pub async fn server<T: P2pHandler>(
                                     Response::StateChannel(infos) => {
                                         rpc_response(0, "state-channel", RpcParam::from(infos))
                                     }
+                                    Response::None => continue,
                                 };
 
                                 if let Some((uid, is_ws)) = sync_requests.remove(&request_id) {
@@ -144,8 +173,23 @@ pub async fn server<T: P2pHandler>(
                                 data,
                             }) => {
                                 // handle received data
-                                let s = String::from_utf8(data).unwrap_or(Default::default());
-                                debug!("Group: {} Message from {}: {:?}", group, source, s);
+                                match groups.get(&group) {
+                                    Some(GroupType::Deployment) => {
+                                        let event: DeploymentEvent = bincode::deserialize(&data)?;
+
+                                        match event {
+                                            DeploymentEvent::PriceRequest(req) => {
+                                                let info = T::info_handle().await;
+                                                let req = Request::Deployment(req, info);
+                                                swarm.behaviour_mut().rpc.request(source, req);
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        let s = String::from_utf8(data).unwrap_or(Default::default());
+                                        debug!("Group: {} Message from {}: {:?}", group, source, s);
+                                    }
+                                }
                             }
                             GroupEvent::Join { peer: _, group: _ } => {
                                 // handle peer join.
@@ -182,13 +226,22 @@ pub async fn server<T: P2pHandler>(
                                 Event::Response(rid, res) => {
                                     let _ = swarm.behaviour_mut().rpc.response(rid, res);
                                 }
-                                Event::GroupJoin(gid) => {
+                                Event::GroupJoin(gid, gtype) => {
+                                    groups.insert(gid.clone(), gtype);
                                     let _ = swarm.behaviour_mut().group.join(gid);
                                 }
                                 Event::GroupLeave(gid) => {
+                                    groups.remove(&gid);
                                     swarm.behaviour_mut().group.leave(gid);
                                 }
                                 Event::GroupBroadcast(gid, data) => {
+                                    swarm.behaviour_mut().group.broadcast(gid, data);
+                                }
+                                Event::GroupDeployment(gid) => {
+                                    let req = swarm.behaviour_mut().rpc.next_request_id();
+                                    let event = DeploymentEvent::PriceRequest(req);
+                                    let data = bincode::serialize(&event)?;
+
                                     swarm.behaviour_mut().group.broadcast(gid, data);
                                 }
                                 Event::GroupAddNode(gid, pid) => {
@@ -221,9 +274,10 @@ pub enum Event {
     Request(PeerId, Request),
     RequestSync(PeerId, Request),
     Response(RequestId, Response),
-    GroupJoin(GroupId),
+    GroupJoin(GroupId, GroupType),
     GroupLeave(GroupId),
     GroupBroadcast(GroupId, Vec<u8>),
+    GroupDeployment(GroupId),
     GroupAddNode(GroupId, PeerId),
     GroupDelNode(GroupId, PeerId),
 }

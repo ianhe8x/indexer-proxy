@@ -23,7 +23,7 @@ use super::behaviour::{
     rpc::{Request, RequestId, Response},
 };
 use super::rpc::helper::{json, RpcError, RpcHandler, RpcParam};
-use super::server::Event;
+use super::server::{Event, GroupType};
 
 pub struct State;
 
@@ -121,9 +121,15 @@ pub fn init_rpc_handler() -> RpcHandler<State> {
             return Err(RpcError::ParseError);
         }
         let gid = params[0].as_str().ok_or(RpcError::ParseError)?;
+        let gtype = if gid.len() == 64 {
+            // 32-bytes
+            GroupType::Deployment
+        } else {
+            GroupType::Other
+        };
 
         Ok(vec![
-            Event::GroupJoin(GroupId::new(gid)),
+            Event::GroupJoin(GroupId::new(gid), gtype),
             Event::Rpc(Default::default()),
         ])
     });
@@ -151,6 +157,21 @@ pub fn init_rpc_handler() -> RpcHandler<State> {
 
             Ok(vec![
                 Event::GroupBroadcast(GroupId::new(gid), msg.as_bytes().to_vec()),
+                Event::Rpc(Default::default()),
+            ])
+        },
+    );
+
+    rpc_handler.add_method(
+        "group-deployment",
+        |params: Vec<RpcParam>, _state: Arc<State>| async move {
+            if params.len() != 1 {
+                return Err(RpcError::ParseError);
+            }
+            let gid = params[0].as_str().ok_or(RpcError::ParseError)?;
+
+            Ok(vec![
+                Event::GroupDeployment(GroupId::new(gid)),
                 Event::Rpc(Default::default()),
             ])
         },

@@ -18,7 +18,7 @@
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use subql_proxy_utils::p2p::{P2pHandler, Request, Response};
+use subql_proxy_utils::p2p::{P2pHandler, Response};
 use web3::types::U256;
 
 use crate::account::ACCOUNT;
@@ -29,23 +29,21 @@ pub struct IndexerP2p;
 
 #[async_trait]
 impl P2pHandler for IndexerP2p {
-    async fn request(request: Request) -> Response {
-        // handle request
-        match request {
-            Request::StateChannel(infos) => channel_handle(&infos).await,
-            Request::Info => {
-                let projects = list_projects();
-                let account = ACCOUNT.read().await;
-                let data = json!({
-                    "indexer": format!("{:?}", account.indexer),
-                    "controller": format!("{:?}", account.controller),
-                    "projects": projects,
-                    "price": U256::from(PRICE),
-                });
-                drop(account);
-                Response::Data(serde_json::to_string(&data).unwrap())
-            }
-        }
+    async fn channel_handle(info: &str) -> Response {
+        channel_handle(info).await
+    }
+
+    async fn info_handle() -> String {
+        let projects = list_projects();
+        let account = ACCOUNT.read().await;
+        let data = json!({
+            "indexer": format!("{:?}", account.indexer),
+            "controller": format!("{:?}", account.controller),
+            "projects": projects,
+            "price": U256::from(PRICE),
+        });
+        drop(account);
+        serde_json::to_string(&data).unwrap()
     }
 
     async fn event() {

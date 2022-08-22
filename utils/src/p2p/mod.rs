@@ -30,7 +30,9 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait P2pHandler {
-    async fn request(req: Request) -> Response;
+    async fn channel_handle(state: &str) -> Response;
+
+    async fn info_handle() -> String;
 
     async fn event() {}
 }

@@ -68,6 +68,8 @@ pub enum Request {
     Info,
     /// state channel JSON info.
     StateChannel(String),
+    /// response the info from broadcast.
+    Deployment(RequestId, String),
 }
 
 /// Rpc Request type.
@@ -79,6 +81,8 @@ pub enum Response {
     StateChannel(String),
     /// error response.
     Error(String),
+    /// none response.
+    None,
 }
 
 /// An inbound request or response.
@@ -419,7 +423,7 @@ impl Rpc {
     }
 
     /// Returns the next request ID.
-    fn next_request_id(&mut self) -> RequestId {
+    pub fn next_request_id(&mut self) -> RequestId {
         let request_id = self.next_request_id;
         self.next_request_id += 1;
         request_id
