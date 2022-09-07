@@ -17,7 +17,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use async_trait::async_trait;
-use subql_proxy_utils::p2p::{P2pHandler, Response};
+use subql_proxy_utils::p2p::{GroupId, P2pHandler, Response};
 
 pub struct ConsumerP2p;
 
@@ -27,7 +27,7 @@ impl P2pHandler for ConsumerP2p {
         Response::None
     }
 
-    async fn info_handle() -> String {
+    async fn info_handle(_: Option<GroupId>) -> String {
         "".to_owned()
     }
 

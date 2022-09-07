@@ -1,7 +1,15 @@
 [package]
-name = "cli"
+name = "subql-cli"
 version = "0.2.0"
 edition = "2021"
+
+[[bin]]
+name="subql-cli-payg"
+path = "src/payg.rs"
+
+[[bin]]
+name="subql-cli-proxy"
+path = "src/proxy.rs"
 
 [dependencies]
 async-trait = "0.1"
@@ -27,4 +35,5 @@ tokio-tungstenite = "0.16"
 url = {version = "2.2" }
 web3 = "0.18"
 
+subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "rust-sdk" }
 subql-proxy-utils = { version = "0.2",  path = "../utils" }

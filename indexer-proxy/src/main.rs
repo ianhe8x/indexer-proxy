@@ -35,7 +35,7 @@ use cli::COMMAND;
 use tracing::Level;
 
 #[cfg(feature = "p2p")]
-use subql_proxy_utils::p2p::{libp2p::identity::Keypair, server::server as p2p_server};
+use subql_proxy_utils::p2p::{libp2p::identity::Keypair, server::server as p2p_server, PeerId};
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +46,7 @@ async fn main() {
     let log_filter = if debug { Level::DEBUG } else { Level::INFO };
     tracing_subscriber::fmt().with_max_level(log_filter).init();
 
-    account::fetch_account_metadata().await.unwrap();
+    let _ = account::fetch_account_metadata().await.unwrap(); // no panic for first start.
     project::init_projects().await;
 
     project::subscribe();
@@ -54,7 +54,7 @@ async fn main() {
     #[cfg(feature = "p2p")]
     {
         let p2p_bind = COMMAND.p2p();
-        let p2p_rpc = COMMAND.rpc();
+        let p2p_rpc = Some(COMMAND.rpc());
         let p2p_ws = COMMAND.ws();
         info!("P2P bind: {}", p2p_bind);
 
@@ -67,8 +67,10 @@ async fn main() {
             let _ = tokio::fs::write(key_path, key.to_protobuf_encoding().unwrap()).await;
             key
         };
+        let peer_id = PeerId::from(key.public());
+        p2p::update_peer(peer_id).await;
         tokio::spawn(async move {
-            p2p_server::<p2p::IndexerP2p>(p2p_bind, p2p_rpc, p2p_ws, None, key)
+            p2p_server::<p2p::IndexerP2p>(p2p_bind, p2p_rpc, p2p_ws, None, None, key)
                 .await
                 .unwrap();
         });

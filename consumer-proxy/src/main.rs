@@ -53,7 +53,7 @@ async fn main() {
             key
         };
         tokio::spawn(async move {
-            p2p_server::<p2p::ConsumerP2p>(p2p_bind, "127.0.0.1:8011".parse().unwrap(), None, None, key)
+            p2p_server::<p2p::ConsumerP2p>(p2p_bind, Some("127.0.0.1:8011".parse().unwrap()), None, None, None, key)
                 .await
                 .unwrap();
         });

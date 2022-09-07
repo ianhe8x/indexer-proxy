@@ -145,11 +145,11 @@ pub async fn query_handler(
         return Err(Error::JWTTokenError);
     };
 
-    let query_url = get_project(&id)?;
+    let project = get_project(&id)?;
 
     prometheus::push_query_metrics(id.to_owned());
 
-    let response = graphql_request(&query_url, &query).await?;
+    let response = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(response))
 }
 
@@ -169,12 +169,12 @@ pub async fn payg_handler(
 }
 
 pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
-    let query_url = get_project(&id)?;
+    let project = get_project(&id)?;
 
     // TODO: move to other place
     let _ = account::fetch_account_metadata().await;
 
     let query = json!({ "query": METADATA_QUERY });
-    let response = graphql_request(&query_url, &query).await?;
+    let response = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(response))
 }

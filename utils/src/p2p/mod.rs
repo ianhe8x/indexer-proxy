@@ -23,8 +23,13 @@ pub mod rpc;
 pub mod server;
 
 pub use libp2p; // re-export
+pub use libp2p::PeerId;
 
-pub use behaviour::rpc::{Request, Response};
+pub use behaviour::{
+    group::GroupId,
+    rpc::{Request, Response},
+};
+pub use rpc::{channel_rpc_channel, ChannelRpcSender};
 
 use async_trait::async_trait;
 
@@ -32,7 +37,8 @@ use async_trait::async_trait;
 pub trait P2pHandler {
     async fn channel_handle(state: &str) -> Response;
 
-    async fn info_handle() -> String;
+    /// If group is set, get specific group information, otherwise all information.
+    async fn info_handle(group: Option<GroupId>) -> String;
 
     async fn event() {}
 }

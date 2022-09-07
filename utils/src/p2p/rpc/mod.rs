@@ -23,18 +23,25 @@ use std::path::PathBuf;
 use tokio::{
     net::TcpListener,
     select,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        oneshot,
+    },
 };
 
+mod channel;
 pub mod helper;
 mod http;
 mod ws;
 
 use helper::RpcParam;
 
+pub type ChannelAddr = (Sender<RpcParam>, Receiver<ChannelMessage>);
+
 pub struct RpcConfig {
-    pub addr: SocketAddr,
+    pub http: Option<SocketAddr>,
     pub ws: Option<SocketAddr>,
+    pub channel: Option<ChannelAddr>,
     pub index: Option<PathBuf>,
 }
 
@@ -44,6 +51,45 @@ pub struct RpcMessage(pub u64, pub RpcParam, pub bool);
 
 pub fn rpc_channel() -> (Sender<RpcMessage>, Receiver<RpcMessage>) {
     mpsc::channel(128)
+}
+
+pub enum ChannelMessage {
+    Sync(RpcParam, oneshot::Sender<RpcInnerMessage>),
+    Async(RpcParam),
+}
+
+/// sender for channel rpc. support sync and no-sync
+#[derive(Clone)]
+pub struct ChannelRpcSender(pub Sender<ChannelMessage>);
+
+impl ChannelRpcSender {
+    pub async fn send(&self, msg: RpcParam) {
+        let _ = self.0.send(ChannelMessage::Async(msg)).await;
+    }
+
+    pub async fn sync_send(&self, msg: RpcParam) -> Result<RpcParam> {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.0.send(ChannelMessage::Sync(msg, tx)).await;
+        let msg = rx
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+        match msg {
+            RpcInnerMessage::Response(param) => Ok(param),
+            _ => Ok(Default::default()),
+        }
+    }
+}
+
+pub fn channel_rpc_channel() -> (
+    Sender<RpcParam>,
+    Receiver<RpcParam>,
+    ChannelRpcSender,
+    Receiver<ChannelMessage>,
+) {
+    let (out_send, out_recv) = mpsc::channel(128);
+    let (inner_send, inner_recv) = mpsc::channel(128);
+    (out_send, out_recv, ChannelRpcSender(inner_send), inner_recv)
 }
 
 pub async fn start(config: RpcConfig, send: Sender<RpcMessage>) -> Result<Sender<RpcMessage>> {
@@ -58,10 +104,10 @@ pub async fn start(config: RpcConfig, send: Sender<RpcMessage>) -> Result<Sender
 }
 
 #[derive(Debug)]
-enum RpcInnerMessage {
+pub enum RpcInnerMessage {
     Open(u64, Sender<RpcInnerMessage>),
     Close(u64),
-    Request(u64, RpcParam, Option<Sender<RpcInnerMessage>>),
+    Request(u64, RpcParam, Option<oneshot::Sender<RpcInnerMessage>>),
     Response(RpcParam),
 }
 
@@ -80,7 +126,8 @@ async fn listen(
     mut self_recv: Receiver<RpcInnerMessage>,
 ) -> Result<()> {
     tokio::spawn(async move {
-        let mut connections: HashMap<u64, (Sender<RpcInnerMessage>, bool)> = HashMap::new();
+        let mut ws_connections: HashMap<u64, Sender<RpcInnerMessage>> = HashMap::new();
+        let mut sync_connections: HashMap<u64, oneshot::Sender<RpcInnerMessage>> = HashMap::new();
 
         loop {
             let res = select! {
@@ -94,18 +141,16 @@ async fn listen(
                     if is_ws {
                         if id == 0 {
                             // default send to all ws.
-                            for (s, iw) in connections.values() {
-                                if *iw {
-                                    let _ = s.send(RpcInnerMessage::Response(params.clone())).await;
-                                }
+                            for s in ws_connections.values() {
+                                let _ = s.send(RpcInnerMessage::Response(params.clone())).await;
                             }
-                        } else if let Some((s, _)) = connections.get(&id) {
+                        } else if let Some(s) = ws_connections.get(&id) {
                             let _ = s.send(RpcInnerMessage::Response(params)).await;
                         }
                     } else {
-                        let s = connections.remove(&id);
+                        let s = sync_connections.remove(&id);
                         if s.is_some() {
-                            let _ = s.unwrap().0.send(RpcInnerMessage::Response(params)).await;
+                            let _ = s.unwrap().send(RpcInnerMessage::Response(params));
                         }
                     }
                 }
@@ -114,17 +159,19 @@ async fn listen(
                         RpcInnerMessage::Request(uid, params, sender) => {
                             let is_ws = sender.is_none();
                             if !is_ws {
-                                connections.insert(uid, (sender.unwrap(), false));
+                                sync_connections.insert(uid, sender.unwrap());
                             }
                             send.send(RpcMessage(uid, params, is_ws))
                                 .await
                                 .expect("Rpc to Outside channel closed");
                         }
                         RpcInnerMessage::Open(id, sender) => {
-                            connections.insert(id, (sender, true));
+                            ws_connections.insert(id, sender);
                         }
                         RpcInnerMessage::Close(id) => {
-                            connections.remove(&id);
+                            // clear this id
+                            ws_connections.remove(&id);
+                            sync_connections.remove(&id);
                         }
                         _ => {} // others not handle
                     }
@@ -138,24 +185,32 @@ async fn listen(
 }
 
 async fn server(send: Sender<RpcInnerMessage>, config: RpcConfig) -> Result<()> {
-    tokio::spawn(http::http_listen(
-        config.index.clone(),
-        send.clone(),
-        TcpListener::bind(config.addr).await.map_err(|e| {
-            error!("RPC HTTP listen {:?}", e);
-            std::io::Error::new(std::io::ErrorKind::Other, "TCP Listen")
-        })?,
-    ));
+    // HTTP blind
+    if let Some(http) = config.http {
+        tokio::spawn(http::http_listen(
+            config.index.clone(),
+            send.clone(),
+            TcpListener::bind(http).await.map_err(|e| {
+                error!("RPC HTTP listen {:?}", e);
+                std::io::Error::new(std::io::ErrorKind::Other, "TCP Listen")
+            })?,
+        ));
+    }
 
-    // ws
-    if config.ws.is_some() {
+    // WS
+    if let Some(ws) = config.ws {
         tokio::spawn(ws::ws_listen(
-            send,
-            TcpListener::bind(config.ws.unwrap()).await.map_err(|e| {
+            send.clone(),
+            TcpListener::bind(ws).await.map_err(|e| {
                 error!("RPC WS listen {:?}", e);
                 std::io::Error::new(std::io::ErrorKind::Other, "TCP Listen")
             })?,
         ));
+    }
+
+    // Channel
+    if let Some((out_send, my_recv)) = config.channel {
+        tokio::spawn(channel::channel_listen(send, out_send, my_recv));
     }
 
     Ok(())

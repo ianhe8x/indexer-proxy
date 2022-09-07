@@ -40,7 +40,7 @@ use super::behaviour::{
 use super::handler::init_rpc_handler;
 use super::rpc::{
     helper::{rpc_error, rpc_response, RpcParam},
-    rpc_channel, start as rpc_start, RpcConfig, RpcMessage,
+    rpc_channel, start as rpc_start, ChannelAddr, RpcConfig, RpcMessage,
 };
 use super::P2pHandler;
 
@@ -56,8 +56,9 @@ pub enum DeploymentEvent {
 
 pub async fn server<T: P2pHandler>(
     p2p_addr: Multiaddr,
-    rpc_addr: SocketAddr,
+    http_addr: Option<SocketAddr>,
     ws_addr: Option<SocketAddr>,
+    channel_addr: Option<ChannelAddr>,
     _channel: Option<(Sender<ChannelMessage>, Receiver<ChannelMessage>)>,
     key: Keypair,
 ) -> Result<Swarm<Behaviour>, Box<dyn Error>> {
@@ -78,8 +79,9 @@ pub async fn server<T: P2pHandler>(
 
     let (out_send, mut out_recv) = rpc_channel();
     let rpc_config = RpcConfig {
-        addr: rpc_addr,
+        http: http_addr,
         ws: ws_addr,
+        channel: channel_addr,
         index: None,
     };
     let rpc_send = rpc_start(rpc_config, out_send).await.unwrap();
@@ -111,7 +113,7 @@ pub async fn server<T: P2pHandler>(
                                 // handle request
                                 let res = match request {
                                     Request::StateChannel(infos) => T::channel_handle(&infos).await,
-                                    Request::Info => Response::Data(T::info_handle().await),
+                                    Request::Info => Response::Data(T::info_handle(None).await),
                                     Request::Deployment(req, info) => {
                                         let res = rpc_response(0, "deployment", RpcParam::from(info));
                                         // handle info
@@ -179,7 +181,7 @@ pub async fn server<T: P2pHandler>(
 
                                         match event {
                                             DeploymentEvent::PriceRequest(req) => {
-                                                let info = T::info_handle().await;
+                                                let info = T::info_handle(Some(group)).await;
                                                 let req = Request::Deployment(req, info);
                                                 swarm.behaviour_mut().rpc.request(source, req);
                                             }

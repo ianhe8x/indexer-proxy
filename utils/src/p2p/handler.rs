@@ -121,7 +121,8 @@ pub fn init_rpc_handler() -> RpcHandler<State> {
             return Err(RpcError::ParseError);
         }
         let gid = params[0].as_str().ok_or(RpcError::ParseError)?;
-        let gtype = if gid.len() == 64 {
+        let deployment = crate::tools::cid_deployment(gid);
+        let gtype = if deployment != [0u8; 32] {
             // 32-bytes
             GroupType::Deployment
         } else {

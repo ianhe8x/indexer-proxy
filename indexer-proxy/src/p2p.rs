@@ -17,13 +17,23 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use serde_json::{json, Value};
-use subql_proxy_utils::p2p::{P2pHandler, Response};
-use web3::types::U256;
+use subql_proxy_utils::p2p::{GroupId, P2pHandler, PeerId, Response};
+use tokio::sync::RwLock;
 
 use crate::account::ACCOUNT;
-use crate::payg::{open_state, query_state, PRICE};
-use crate::project::list_projects;
+use crate::cli::COMMAND;
+use crate::payg::{open_state, query_state};
+use crate::project::{get_project, list_projects};
+
+pub static PEER: Lazy<RwLock<PeerId>> = Lazy::new(|| RwLock::new(PeerId::random()));
+
+pub async fn update_peer(peer: PeerId) {
+    let mut key = PEER.write().await;
+    *key = peer;
+    drop(key);
+}
 
 pub struct IndexerP2p;
 
@@ -33,16 +43,35 @@ impl P2pHandler for IndexerP2p {
         channel_handle(info).await
     }
 
-    async fn info_handle() -> String {
-        let projects = list_projects();
+    async fn info_handle(group: Option<GroupId>) -> String {
         let account = ACCOUNT.read().await;
-        let data = json!({
-            "indexer": format!("{:?}", account.indexer),
-            "controller": format!("{:?}", account.controller),
-            "projects": projects,
-            "price": U256::from(PRICE),
-        });
+        let peer_str = PEER.read().await.to_base58();
+        let data = if let Some(group) = group {
+            let (id, price) = if let Ok(project) = get_project(&group.id()) {
+                (group.id(), project.price)
+            } else {
+                ("", "".to_owned())
+            };
+            json!({
+                "endpoint": COMMAND.endpoint(),
+                "peer": peer_str,
+                "indexer": format!("{:?}", account.indexer),
+                "controller": format!("{:?}", account.controller),
+                "deployment": id,
+                "price": price,
+            })
+        } else {
+            let projects = list_projects();
+            json!({
+                "endpoint": COMMAND.endpoint(),
+                "peer": peer_str,
+                "indexer": format!("{:?}", account.indexer),
+                "controller": format!("{:?}", account.controller),
+                "deployments": projects,
+            })
+        };
         drop(account);
+
         serde_json::to_string(&data).unwrap()
     }
 

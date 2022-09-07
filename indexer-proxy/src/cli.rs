@@ -35,6 +35,12 @@ pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Indexer Proxy", about = "Command line for starting indexer proxy server")]
 pub struct CommandLineArgs {
+    /// Endpoint of this service
+    #[structopt(long = "endpoint", default_value = "http://localhost:8003")]
+    pub endpoint: String,
+    /// IP address for the server
+    #[structopt(long = "host", default_value = "127.0.0.1")]
+    pub host: String,
     /// Port the service will listen on
     #[structopt(short = "p", long = "port", default_value = "8003")]
     pub port: u16,
@@ -44,9 +50,6 @@ pub struct CommandLineArgs {
     /// Secret key for generating auth token
     #[structopt(long = "secret-key")]
     pub secret_key: String,
-    /// IP address for the server
-    #[structopt(long = "host", default_value = "127.0.0.1")]
-    pub host: String,
     /// enable auth
     #[structopt(short = "a", long = "auth")]
     pub auth: bool,
@@ -71,6 +74,14 @@ pub struct CommandLineArgs {
 }
 
 impl CommandLineArgs {
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
     pub fn port(&self) -> u16 {
         self.port
     }
@@ -93,10 +104,6 @@ impl CommandLineArgs {
         String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt)
     }
 
-    pub fn host(&self) -> &str {
-        &self.host
-    }
-
     pub fn debug(&self) -> bool {
         self.debug
     }
@@ -111,6 +118,10 @@ impl CommandLineArgs {
 
     pub fn rpc(&self) -> SocketAddr {
         self.p2p_rpc
+    }
+
+    pub fn rpc_url(&self) -> String {
+        format!("http://{}", self.p2p_rpc)
     }
 
     pub fn ws(&self) -> Option<SocketAddr> {

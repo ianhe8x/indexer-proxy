@@ -41,6 +41,7 @@ pub enum Error {
     InvalidSignature,
     InvalidEncrypt,
     InvalidRequest,
+    PaygConflict,
 }
 
 impl Error {
@@ -73,6 +74,7 @@ impl Error {
             Error::InvalidSignature => (StatusCode::BAD_REQUEST, "invalid signature".to_owned()),
             Error::InvalidEncrypt => (StatusCode::BAD_REQUEST, "invalid encrypt or decrypt".to_owned()),
             Error::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid request".to_owned()),
+            Error::PaygConflict => (StatusCode::BAD_REQUEST, "PAYG conflict".to_owned()),
         }
     }
 }

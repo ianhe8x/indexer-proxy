@@ -22,14 +22,17 @@ use secp256k1::SecretKey;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env::args;
-use std::path::PathBuf;
+use std::sync::Arc;
+use subql_contracts::{sqtoken, state_channel, Network};
 use subql_proxy_utils::{
-    p2p::{libp2p::identity::Keypair, server::server, P2pHandler, Response},
+    error::Error,
+    p2p::{channel_rpc_channel, libp2p::identity::Keypair, server::server, GroupId, P2pHandler, PeerId, Response},
     payg::{convert_sign_to_bytes, default_sign, OpenState, QueryState},
-    request::{jsonrpc_request, proxy_request},
+    request::{jsonrpc_params, jsonrpc_response, proxy_request},
+    tools::{cid_deployment, deployment_cid},
 };
+use tokio::sync::RwLock;
 use web3::{
-    api::Eth,
     contract::{
         tokens::{Tokenizable, Tokenize},
         Contract, Options,
@@ -41,19 +44,27 @@ use web3::{
     Web3,
 };
 
+const TESTNET_ENDPOINT: &str = "https://sqtn.api.onfinality.io/public";
+const MOONBEAM_ENDPOINT: &str = "https://moonbeam-alpha.api.onfinality.io/public";
+const CONSUMER: &str = "de9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0";
+const P2P_KEY: &str = "0801124021220100bdf8d7da7c51e1e76724bb0f1001d4dbf621662d4fab121a908868bbfe37eab62abbd576faabe024d0a19566a20108a4a29c8bc25184c4d5a6e05782";
+
 fn help() {
     println!("Commands:");
     println!("  help");
     println!("  show");
-    println!("  connect [multiaddr] -- eg. connect /ip4/127.0.0.1/tcp/7000");
+    println!("  indexers");
+    println!("  connect [multiaddr]");
+    println!("    eg. connect /ip4/127.0.0.1/tcp/7000");
+    println!("  search [deployment]");
+    println!("    eg. search xxxxxxxxxxxxxxx");
+    println!("  indexer [indexer]");
+    println!("    eg. indexer 0x2546bcd3c84621e976d8185a91a922ae77ecec30");
     println!("  set web3 [web3 endpoint address]");
     println!("    eg. set web3 https://sqtn.api.onfinality.io/public");
-    println!("  set contract [contracts.json]");
     println!("  set channel [channel uid]");
-    println!("  set indexer [peer-id]");
-    println!("  set project [project-id]");
-    println!("  state-channel open [indexer] [amount] [expired-seconds]");
-    println!("    eg. state-channel open 0x2546bcd3c84621e976d8185a91a922ae77ecec30 100 86400");
+    println!("  state-channel open [amount] [expired-seconds]");
+    println!("    eg. state-channel open 100 86400");
     println!("  state-channel checkpoint");
     println!("  state-channel challenge");
     println!("  state-channel claim");
@@ -67,48 +78,26 @@ struct StateChannel {
     id: U256,
     indexer: Address,
     consumer: Address,
+    deployment: [u8; 32],
+    expiration: U256,
     total: U256,
     spent: U256,
+    onchain: U256,
+    remote: U256,
     price: U256,
-    _expiration: U256,
     last_final: bool,
     last_indexer_sign: Signature,
     last_consumer_sign: Signature,
-    info_indexer: String, // indexer ID
-    info_project: String, // project ID
 }
 
-pub struct ConsumerP2p;
-
-#[async_trait]
-impl P2pHandler for ConsumerP2p {
-    async fn channel_handle(_info: &str) -> Response {
-        Response::None
-    }
-
-    async fn info_handle() -> String {
-        "".to_owned()
-    }
-
-    async fn event() {
-        todo!()
-    }
-}
-
-fn build_contracts(eth: Eth<Http>, list: Value) -> HashMap<&'static str, Contract<Http>> {
-    let mut contracts = HashMap::new();
-    for name in vec!["SQToken", "StateChannel", "IndexerRegistry"] {
-        contracts.insert(
-            name,
-            Contract::from_json(
-                eth.clone(),
-                list[name]["address"].as_str().unwrap().parse().unwrap(),
-                &std::fs::read(format!("./examples/contracts/{}.json", name)).unwrap(),
-            )
-            .unwrap(),
-        );
-    }
-    contracts
+struct Indexer {
+    endpoint: String,
+    token: String,
+    peer: PeerId,
+    indexer: Address,
+    controller: Address,
+    price: U256,
+    deployment: [u8; 32],
 }
 
 async fn send_state(
@@ -126,11 +115,6 @@ async fn send_state(
     let mut bytes = "\x19Ethereum Signed Message:\n32".as_bytes().to_vec();
     bytes.extend(keccak256(&msg));
     let _payload = keccak256(&bytes);
-
-    // TODO check sign.
-    //let (i_sign, i_id) = convert_recovery_sign(&indexer_sign);
-    //let address = recover(&payload, &i_sign, i_id);
-    //println!("Recover {:?}", address);
 
     let call_params = Token::Tuple(vec![
         state.id.into_token(),
@@ -161,27 +145,23 @@ async fn send_state(
     println!("\x1b[94m>>> TxHash: {:?}\x1b[00m", tx_hash);
 }
 
-const PROXY_URL: &'static str = "http://127.0.0.1:8003";
-const PROXY_TOKEN: &'static str = "";
-const LOCAL_ENDPOINT: &'static str = "http://127.0.0.1:8545";
-const TESTNET_ENDPOINT: &'static str = "https://sqtn.api.onfinality.io/public";
-
 /// Prepare the consumer account and evm status.
-/// Run `cargo run --example consumer [local|testnet] [proxy|p2p]` default is local and p2p.
+/// Run `cargo run --bin subql-cli-payg [moonbeam|testnet] [proxy|p2p]` default is local and p2p.
 #[tokio::main]
 async fn main() {
     let (mut web3_endpoint, net, is_p2p) = if args().len() == 1 {
-        (LOCAL_ENDPOINT.to_owned(), "local".to_owned(), true)
+        (TESTNET_ENDPOINT.to_owned(), Network::Testnet, true)
     } else {
         if args().len() != 3 {
-            println!("cargo run --example consumer [local|testnet] [proxy|p2p]");
+            println!("cargo run --bin subql-cli-payg [moonbeam|testnet] [proxy|p2p]");
             return;
         }
-        let (endpoint, net) = if args().nth(1).unwrap() == "local".to_owned() {
-            (LOCAL_ENDPOINT.to_owned(), "local".to_owned())
-        } else {
-            (TESTNET_ENDPOINT.to_owned(), "testnet".to_owned())
+        let (endpoint, net) = match args().nth(1).unwrap().as_str() {
+            "moonbeam" => (MOONBEAM_ENDPOINT.to_owned(), Network::Moonbeam),
+            "testnet" => (TESTNET_ENDPOINT.to_owned(), Network::Testnet),
+            _ => (TESTNET_ENDPOINT.to_owned(), Network::Testnet),
         };
+
         let is_p2p = if args().nth(2).unwrap() == "proxy".to_owned() {
             false
         } else {
@@ -190,57 +170,69 @@ async fn main() {
         (endpoint, net, is_p2p)
     };
 
-    // default test consumer secret key. (same with prepare.rs)
-    let consumer_str = "de9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0";
-    let default_indexer = "12D3KooWSvjBEHfxQVcMSfSNAAjSr2uGXJv6RfFYGiYQmWcY2opm";
-    let default_project = "QmYR8xQgAXuCXMPGPVxxR91L4VtKZsozCM7Qsa5oAbyaQ3";
-
     // consumer/controller eth account (PROD need Keystore).
-    let consumer_sk = SecretKey::from_slice(&hex::decode(&consumer_str).unwrap()).unwrap();
+    let consumer_sk = SecretKey::from_slice(&hex::decode(CONSUMER).unwrap()).unwrap();
     let consumer_ref = SecretKeyRef::new(&consumer_sk);
     let consumer = consumer_ref.address();
-
-    let mut current_indexer: String = String::from(default_indexer);
-    let mut current_project: String = String::from(default_project);
 
     // init web3
     let http = Http::new(&web3_endpoint).unwrap();
     let mut web3 = Web3::new(http);
-    if !PathBuf::from(format!("./examples/contracts/{}.json", net)).exists() {
-        println!("Missing contracts deployment. See contracts repo public/{}.json", net);
-        return;
-    }
-    let file = std::fs::File::open(format!("./examples/contracts/{}.json", net)).unwrap();
-    let reader = std::io::BufReader::new(file);
-    let list = serde_json::from_reader(reader).unwrap();
-    let mut contracts = build_contracts(web3.eth(), list);
+    let state_channel = state_channel(web3.eth(), net).unwrap();
+    let token = sqtoken(web3.eth(), net).unwrap();
 
     // cid => StateChannel
     let mut channels: Vec<StateChannel> = vec![];
     let mut cid: usize = 0;
+    let mut choose_indexer = Address::default();
+    let indexers: Arc<RwLock<HashMap<Address, Indexer>>> = Arc::new(RwLock::new(HashMap::new()));
 
     // local p2p rpc bind.
-    let url = "http://127.0.0.1:7777";
-    if is_p2p {
-        let key_bytes = hex::decode("0801124021220100bdf8d7da7c51e1e76724bb0f1001d4dbf621662d4fab121a908868bbfe37eab62abbd576faabe024d0a19566a20108a4a29c8bc25184c4d5a6e05782").unwrap();
-        let p2p_key = Keypair::from_protobuf_encoding(&key_bytes).unwrap();
+    let key_bytes = hex::decode(P2P_KEY).unwrap();
+    let p2p_key = Keypair::from_protobuf_encoding(&key_bytes).unwrap();
+    let (out_send, mut out_recv, p2p_send, p2p_recv) = channel_rpc_channel();
 
-        tokio::spawn(async move {
-            server::<ConsumerP2p>(
-                "/ip4/0.0.0.0/tcp/0".parse().unwrap(),
-                "127.0.0.1:7777".parse().unwrap(),
-                None,
-                None,
-                p2p_key,
-            )
-            .await
-            .unwrap();
-        });
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            jsonrpc_request(0, url, "connect", vec![json!("/ip4/127.0.0.1/tcp/7000")]).await
-        });
-    }
+    tokio::spawn(async move {
+        server::<ConsumerP2p>(
+            "/ip4/0.0.0.0/tcp/0".parse().unwrap(),
+            None,
+            None,
+            Some((out_send, p2p_recv)),
+            None,
+            p2p_key,
+        )
+        .await
+        .unwrap();
+    });
+    let indexers_ref = indexers.clone();
+    tokio::spawn(async move {
+        while let Some(msg) = out_recv.recv().await {
+            let method = msg["method"].as_str().unwrap();
+            if method == "deployment" {
+                let values: Value = serde_json::from_str(msg["result"].as_str().unwrap()).unwrap();
+                let indexer: Address = values["indexer"].as_str().unwrap().parse().unwrap();
+                let controller: Address = values["controller"].as_str().unwrap().parse().unwrap();
+                let price = U256::from_dec_str(values["price"].as_str().unwrap()).unwrap();
+                let endpoint = values["price"].as_str().unwrap().to_owned();
+                let peer = values["peer"].as_str().unwrap().parse().unwrap();
+                let deployment_str = values["deployment"].as_str().unwrap();
+                let deployment = cid_deployment(deployment_str);
+
+                let new_indexer = Indexer {
+                    endpoint,
+                    peer,
+                    indexer,
+                    controller,
+                    deployment,
+                    price,
+                    token: "".to_owned(),
+                };
+                let mut indexers = indexers_ref.write().await;
+                indexers.insert(indexer, new_indexer);
+                drop(indexers);
+            }
+        }
+    });
 
     println!("START QUERY, please input indexer's PeerId!");
     help();
@@ -278,21 +270,39 @@ async fn main() {
                 "show" => {
                     println!("Account Consumer:       {:?}", consumer);
                     //println!("Account Controller:     {:?}", controller.address());
-                    println!("State Channel Contract: {}", contracts["StateChannel"].address());
+                    println!("State Channel Contract: {:?}", state_channel.address());
                     println!("Web3 Endpoint:          {}", web3_endpoint);
                     println!("");
                     if channels.len() == 0 {
                         println!("Current Channel: None");
                     } else {
                         println!("Current Channel: {} {:#X}", cid, channels[cid].id);
+                        println!("Current Channel indexer: {:?}", channels[cid].indexer);
+                        println!(
+                            "Current Channel deployment: {}",
+                            deployment_cid(&channels[cid].deployment)
+                        );
                     }
-                    println!("Default indexer: {}", current_indexer);
-                    println!("Default project: {}", current_project);
-                    let result: U256 = contracts["SQToken"]
+                    let result: U256 = token
                         .query("balanceOf", (consumer,), None, Options::default(), None)
                         .await
                         .unwrap();
                     println!("SQT Balance: {:?}", result);
+                }
+                "indexers" => {
+                    let indexers_ref = indexers.read().await;
+                    for (_, indexer) in indexers_ref.iter() {
+                        println!("\x1b[93m>>> Indexer: {:?}\x1b[00m", indexer.indexer);
+                        println!(
+                            "\x1b[93m>>> Deployment: {}\x1b[00m",
+                            deployment_cid(&indexer.deployment)
+                        );
+                        println!("\x1b[93m>>> Price: {}\x1b[00m", indexer.price);
+                        println!("\x1b[93m>>> Endpoint: {}\x1b[00m", indexer.endpoint);
+                        println!("\x1b[93m>>> Peer: {}\x1b[00m", indexer.peer);
+                        println!("-----------------------------------------");
+                    }
+                    drop(indexers_ref);
                 }
                 _ => println!("\x1b[91mInvalid, type again!\x1b[00m"),
             }
@@ -305,14 +315,35 @@ async fn main() {
                 if !is_p2p {
                     println!("\x1b[91m>>> Only P2P supported\x1b[00m");
                 }
-                if jsonrpc_request(0, url, "connect", vec![Value::from(params.clone())])
-                    .await
-                    .is_ok()
-                {
-                    println!("\x1b[93m>>> Start connect to: {}\x1b[00m", params);
-                } else {
-                    println!("\x1b[91m>>> Invalid Params\x1b[00m");
-                }
+                p2p_send
+                    .send(jsonrpc_params(0, "connect", vec![Value::from(params.clone())]))
+                    .await;
+                println!("\x1b[93m>>> Start connect to: {}\x1b[00m", params);
+            }
+            "search" => {
+                p2p_send
+                    .send(jsonrpc_params(0, "group-join", vec![json!(params)]))
+                    .await;
+                println!("waiting a moment...");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                p2p_send
+                    .send(jsonrpc_params(0, "group-deployment", vec![json!(params)]))
+                    .await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+            "indexer" => {
+                choose_indexer = params.parse().unwrap();
+                let indexers_ref = indexers.read().await;
+                let indexer = indexers_ref.get(&choose_indexer).unwrap();
+                println!("\x1b[93m>>> Indexer changed to: {:?}\x1b[00m", indexer.indexer);
+                println!(
+                    "\x1b[93m>>> Deployment: {}\x1b[00m",
+                    deployment_cid(&indexer.deployment)
+                );
+                println!("\x1b[93m>>> Price: {}\x1b[00m", indexer.price);
+                println!("\x1b[93m>>> Endpoint: {}\x1b[00m", indexer.endpoint);
+                println!("\x1b[93m>>> Peer: {}\x1b[00m", indexer.peer);
+                drop(indexers_ref);
             }
             "set" => {
                 let method_params = params.split_once(" ");
@@ -333,30 +364,12 @@ async fn main() {
                             println!("\x1b[91m>>> Error: {}\x1b[00m", err);
                         }
                     },
-                    "contract" => {
-                        let file = std::fs::File::open(params).unwrap();
-                        let reader = std::io::BufReader::new(file);
-                        let list = serde_json::from_reader(reader).unwrap();
-                        contracts = build_contracts(web3.eth(), list);
-                        println!(
-                            "\x1b[93m>>> Contract changed to: {}\x1b[00m",
-                            contracts["StateChannel"].address()
-                        );
-                    }
                     "channel" => {
                         cid = params.parse().unwrap();
                         println!(
                             "\x1b[93m>>> Channel changed to: {} {:#X}\x1b[00m",
                             cid, channels[cid].id,
                         );
-                    }
-                    "indexer" => {
-                        current_indexer = params;
-                        println!("\x1b[93m>>> Indexer changed to: {}\x1b[00m", current_indexer);
-                    }
-                    "project" => {
-                        current_project = params;
-                        println!("\x1b[93m>>> Project changed to: {}\x1b[00m", current_project);
                     }
                     _ => println!("\x1b[91mInvalid, type again!\x1b[00m"),
                 }
@@ -377,11 +390,16 @@ async fn main() {
                 match method {
                     "open" => {
                         let mut next_params = params.split(" ");
-                        let indexer: Address = next_params.next().unwrap().parse().unwrap();
                         let amount = U256::from_dec_str(next_params.next().unwrap()).unwrap();
                         let expiration = U256::from_dec_str(next_params.next().unwrap()).unwrap();
-                        let mut deployment_id = [0u8; 32];
-                        deployment_id.copy_from_slice(&bs58::decode(default_project).into_vec().unwrap());
+                        let indexers_ref = indexers.read().await;
+                        let choose = indexers_ref.get(&choose_indexer).unwrap();
+                        let indexer = choose.indexer.clone();
+                        let deployment = choose.deployment.clone();
+                        let peer = choose.peer.clone();
+                        let endpoint = choose.endpoint.clone();
+                        let token = choose.token.clone();
+                        drop(indexers_ref);
 
                         let state = OpenState::consumer_generate(
                             None,
@@ -389,7 +407,7 @@ async fn main() {
                             consumer,
                             amount,
                             expiration,
-                            deployment_id,
+                            deployment,
                             vec![],
                             SecretKeyRef::new(&consumer_sk),
                         )
@@ -397,12 +415,17 @@ async fn main() {
                         let raw_state = serde_json::to_string(&state.to_json()).unwrap();
 
                         let res = if is_p2p {
-                            let data = json!({ "method": "open", "state": raw_state });
-                            let infos = serde_json::to_string(&data).unwrap();
-                            let query = vec![Value::from(current_indexer.as_str()), Value::from(infos)];
-                            jsonrpc_request(0, url, "state-channel", query).await
+                            let query = vec![Value::from(peer.to_base58()), Value::from(raw_state)];
+                            let res = p2p_send
+                                .sync_send(jsonrpc_params(0, "state-channel", query))
+                                .await
+                                .map_err(|e| {
+                                    println!("{:?}", e);
+                                    Error::ServiceException
+                                });
+                            jsonrpc_response(res)
                         } else {
-                            proxy_request("post", PROXY_URL, "open", PROXY_TOKEN, raw_state, vec![]).await
+                            proxy_request("post", &endpoint, "open", &token, raw_state, vec![]).await
                         };
 
                         match res {
@@ -419,58 +442,38 @@ async fn main() {
                                     id: state.channel_id,
                                     indexer: state.indexer,
                                     consumer: state.consumer,
+                                    deployment: deployment,
+                                    expiration: state.expiration,
                                     total: state.total,
                                     spent: U256::from(0u64),
+                                    onchain: U256::from(0u64),
+                                    remote: U256::from(0u64),
                                     price: state.price,
-                                    _expiration: state.expiration,
                                     last_final: false,
                                     last_indexer_sign: state.indexer_sign,
                                     last_consumer_sign: state.consumer_sign,
-                                    info_indexer: current_indexer.clone(),
-                                    info_project: current_project.clone(),
                                 });
                             }
                             Err(err) => println!("\x1b[91m>>> Error: {}\x1b[00m", err),
                         }
                     }
                     "checkpoint" => {
-                        send_state(
-                            &web3,
-                            &contracts["StateChannel"],
-                            &channels[cid],
-                            "checkpoint",
-                            &consumer_sk,
-                        )
-                        .await;
+                        send_state(&web3, &state_channel, &channels[cid], "checkpoint", &consumer_sk).await;
                     }
                     "challenge" => {
-                        send_state(
-                            &web3,
-                            &contracts["StateChannel"],
-                            &channels[cid],
-                            "challenge",
-                            &consumer_sk,
-                        )
-                        .await;
+                        send_state(&web3, &state_channel, &channels[cid], "challenge", &consumer_sk).await;
                     }
                     "respond" => {
-                        send_state(
-                            &web3,
-                            &contracts["StateChannel"],
-                            &channels[cid],
-                            "respond",
-                            &consumer_sk,
-                        )
-                        .await;
+                        send_state(&web3, &state_channel, &channels[cid], "respond", &consumer_sk).await;
                     }
                     "claim" => {
                         let channel_id = channels[cid].id;
-                        let fn_data = contracts["StateChannel"]
+                        let fn_data = state_channel
                             .abi()
                             .function("claim")
                             .and_then(|function| function.encode_input(&(channel_id,).into_tokens()))
                             .unwrap();
-                        let gas = contracts["StateChannel"]
+                        let gas = state_channel
                             .estimate_gas("claim", (channel_id,), channels[cid].consumer, Default::default())
                             .await;
                         if gas.is_err() {
@@ -479,7 +482,7 @@ async fn main() {
                         }
                         let gas = gas.unwrap();
                         let tx = TransactionParameters {
-                            to: Some(contracts["StateChannel"].address()),
+                            to: Some(state_channel.address()),
                             data: Bytes(fn_data),
                             gas: gas,
                             ..Default::default()
@@ -489,7 +492,7 @@ async fn main() {
                         println!("\x1b[94m>>> TxHash: {:?}\x1b[00m", tx_hash);
                     }
                     "show" => {
-                        let result: (Token,) = contracts["StateChannel"]
+                        let result: (Token,) = state_channel
                             .query("channel", (channels[cid].id,), None, Options::default(), None)
                             .await
                             .unwrap();
@@ -510,7 +513,7 @@ async fn main() {
                     }
                     "add" => {
                         let channel_id: U256 = params.parse().unwrap();
-                        let result: (Token,) = contracts["StateChannel"]
+                        let result: (Token,) = state_channel
                             .query("channel", (channel_id,), None, Options::default(), None)
                             .await
                             .unwrap();
@@ -519,6 +522,9 @@ async fn main() {
                                 let total: U256 = data[3].clone().into_uint().unwrap().into();
                                 let spent: U256 = data[4].clone().into_uint().unwrap().into();
                                 let expiration: U256 = data[5].clone().into_uint().unwrap().into();
+                                let deployment_vec = data[7].clone().into_fixed_bytes().unwrap();
+                                let mut deployment = [0u8; 32];
+                                deployment.copy_from_slice(&deployment_vec);
                                 println!("State Channel Status: {}", data[0]);
                                 println!(" Indexer:  0x{}", data[1]);
                                 println!(" Consumer: 0x{}", data[2]);
@@ -528,17 +534,18 @@ async fn main() {
                                 cid = channels.len();
                                 channels.push(StateChannel {
                                     id: channel_id,
-                                    total: total,
-                                    spent: spent,
-                                    _expiration: expiration,
                                     indexer: data[1].clone().into_address().unwrap(),
                                     consumer: data[2].clone().into_address().unwrap(),
-                                    price: U256::from(10u64),
+                                    deployment: deployment,
+                                    total: total,
+                                    spent: spent,
+                                    onchain: spent,
+                                    remote: spent,
+                                    expiration: expiration,
+                                    price: U256::from(10u64), // TODO need query to indexer
                                     last_final: false,
                                     last_indexer_sign: default_sign(),
                                     last_consumer_sign: default_sign(),
-                                    info_indexer: current_indexer.clone(),
-                                    info_project: current_project.clone(),
                                 });
                             }
                             _ => {}
@@ -556,6 +563,13 @@ async fn main() {
                     continue;
                 }
 
+                let indexers_ref = indexers.read().await;
+                let choose = indexers_ref.get(&channels[cid].indexer).unwrap();
+                let peer = choose.peer.clone();
+                let endpoint = choose.endpoint.clone();
+                let token = choose.token.clone();
+                drop(indexers_ref);
+
                 let is_final = channels[cid].spent + channels[cid].price >= channels[cid].total;
                 let next_spent = channels[cid].spent + channels[cid].price;
                 println!("Next spent: {}", next_spent);
@@ -572,19 +586,23 @@ async fn main() {
                 let raw_state = serde_json::to_string(&state.to_json()).unwrap();
                 let res = if is_p2p {
                     let query = vec![
-                        Value::from(channels[cid].info_indexer.as_str()),
-                        Value::from(channels[cid].info_project.as_str()),
+                        Value::from(peer.to_base58()),
+                        Value::from(deployment_cid(&channels[cid].deployment)),
                         Value::from(raw_query),
                         Value::from(raw_state),
                     ];
 
-                    jsonrpc_request(0, url, "payg-sync", query).await
+                    let res = p2p_send
+                        .sync_send(jsonrpc_params(0, "payg-sync", query))
+                        .await
+                        .map_err(|_| Error::ServiceException);
+                    jsonrpc_response(res)
                 } else {
                     proxy_request(
                         "post",
-                        PROXY_URL,
-                        &format!("payg/{}", channels[cid].info_project),
-                        PROXY_TOKEN,
+                        &endpoint,
+                        &format!("payg/{}", deployment_cid(&channels[cid].deployment)),
+                        &token,
                         raw_query,
                         vec![("Authorization".to_owned(), raw_state)],
                     )
@@ -599,20 +617,14 @@ async fn main() {
                         let check = (state.spent - channels[cid].spent) / channels[cid].price > 5i32.into();
 
                         channels[cid].spent = state.spent;
+                        channels[cid].remote = state.remote;
                         channels[cid].last_final = state.is_final;
                         channels[cid].last_indexer_sign = state.indexer_sign;
                         channels[cid].last_consumer_sign = state.consumer_sign;
 
                         if check {
                             println!("Every 5 times will auto checkpoint...");
-                            send_state(
-                                &web3,
-                                &contracts["StateChannel"],
-                                &channels[cid],
-                                "checkpoint",
-                                &consumer_sk,
-                            )
-                            .await;
+                            send_state(&web3, &state_channel, &channels[cid], "checkpoint", &consumer_sk).await;
                         }
                     }
                     Err(err) => println!("\x1b[91m>>> Error: {}\x1b[00m", err),
@@ -624,4 +636,21 @@ async fn main() {
         }
     }
     rl.save_history("history.txt").unwrap();
+}
+
+pub struct ConsumerP2p;
+
+#[async_trait]
+impl P2pHandler for ConsumerP2p {
+    async fn channel_handle(_info: &str) -> Response {
+        Response::None
+    }
+
+    async fn info_handle(_: Option<GroupId>) -> String {
+        "".to_owned()
+    }
+
+    async fn event() {
+        todo!()
+    }
 }

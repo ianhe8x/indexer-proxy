@@ -28,6 +28,7 @@ use subql_proxy_utils::{
     error::Error,
     payg::{convert_sign_to_string, OpenState, QueryState},
     request::graphql_request,
+    tools::deployment_cid,
 };
 use web3::{signing::SecretKeyRef, types::U256};
 
@@ -35,12 +36,12 @@ use crate::account::ACCOUNT;
 use crate::cli::COMMAND;
 use crate::project::get_project;
 
-pub const PRICE: u64 = 10; // TODO delete
-
 pub async fn open_state(body: &Value) -> Result<Value, Error> {
     let mut state = OpenState::from_json(body)?;
 
     // TODO check project is exists. unify the deployment id store style.
+
+    // TODO check project price.
 
     let account = ACCOUNT.read().await;
     let key = SecretKeyRef::new(&account.controller_sk);
@@ -53,42 +54,54 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
 
     let mdata = format!(
         r#"mutation {{
-  channelOpen(id:"{:#X}", indexer:"{:?}", consumer:"{:?}", total:{}, expiration:{}, deploymentId:"0x{}", callback:"0x{}", lastIndexerSign:"0x{}", lastConsumerSign:"0x{}") {{
-    lastPrice
-  }}
-}}
-"#,
+             channelOpen(
+               id:"{:#X}",
+               indexer:"{:?}",
+               consumer:"{:?}",
+               total:"{}",
+               expiration:{},
+               deploymentId:"{}",
+               callback:"0x{}",
+               lastIndexerSign:"0x{}",
+               lastConsumerSign:"0x{}",
+               price:"{}")
+           {{ price }}
+        }}"#,
         state.channel_id,
         state.indexer,
         state.consumer,
         state.total,
         state.expiration,
-        hex::encode(&state.deployment_id),
+        deployment_cid(&state.deployment_id),
         hex::encode(&state.callback),
         convert_sign_to_string(&state.indexer_sign),
-        convert_sign_to_string(&state.consumer_sign)
+        convert_sign_to_string(&state.consumer_sign),
+        state.price,
     );
+    println!("{}", mdata);
 
     let query = json!({ "query": mdata });
     let result = graphql_request(&url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
-    let price = result
+    let price: U256 = result
         .get("data")
         .ok_or(Error::ServiceException)?
         .get("channelOpen")
         .ok_or(Error::ServiceException)?
         .get("price")
         .ok_or(Error::ServiceException)?
-        .as_i64()
-        .ok_or(Error::ServiceException)?;
-    state.price = U256::from(price);
+        .as_str()
+        .ok_or(Error::ServiceException)?
+        .parse()
+        .map_err(|_| Error::ServiceException)?;
+    state.price = price;
 
     Ok(state.to_json())
 }
 
 pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value), Error> {
-    let query_url = get_project(project)?;
+    let project = get_project(project)?;
     let mut state = QueryState::from_json(state)?;
 
     let account = ACCOUNT.read().await;
@@ -99,7 +112,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     // TODO more verify the signer
 
     // query the data.
-    let data = match graphql_request(&query_url, query).await {
+    let data = match graphql_request(&project.query_endpoint, query).await {
         Ok(result) => {
             let string = serde_json::to_string(&result).unwrap(); // safe unwrap
             let _sign = crate::account::sign_message(string.as_bytes()); // TODO add to header
@@ -115,9 +128,14 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let url = COMMAND.graphql_url();
     let mdata = format!(
         r#"mutation {{
-  channelUpdate(id:"{:#X}", spent:{}, isFinal:{}, indexerSign:"0x{}", consumerSign:"0x{}") {{ id }}
-}}
-"#,
+             channelUpdate(
+               id:"{:#X}",
+               spent:"{}",
+               isFinal:{},
+               indexerSign:"0x{}",
+               consumerSign:"0x{}")
+           {{ id, spent }}
+        }}"#,
         state.channel_id,
         state.spent,
         state.is_final,
@@ -129,7 +147,18 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let result = graphql_request(&url, &query)
         .await
         .map_err(|_| Error::ServiceException)?;
-    let _ = result.get("data").ok_or(Error::ServiceException)?;
+    let spent: U256 = result
+        .get("data")
+        .ok_or(Error::PaygConflict)?
+        .get("channelUpdate")
+        .ok_or(Error::PaygConflict)?
+        .get("spent")
+        .ok_or(Error::PaygConflict)?
+        .as_str()
+        .ok_or(Error::PaygConflict)?
+        .parse()
+        .map_err(|_| Error::PaygConflict)?;
+    state.remote = spent;
 
     Ok((state.to_json(), data))
 }

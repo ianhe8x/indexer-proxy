@@ -62,25 +62,36 @@ pub async fn fetch_account_metadata() -> Result<()> {
         .parse()
         .map_err(|_e| Error::InvalidServiceEndpoint)?;
 
-    let sk = value
+    let fetch_controller = value
         .pointer("/data/accountMetadata/controller")
-        .ok_or(Error::InvalidController)?
-        .as_str()
-        .unwrap_or("")
-        .trim();
-    let sk_values = serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
-    if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
-        return Err(Error::InvalidController);
-    }
-    let sk = COMMAND.decrypt(
-        sk_values["iv"].as_str().ok_or(Error::InvalidController)?,
-        sk_values["content"].as_str().ok_or(Error::InvalidController)?,
-    )?; // with 0x...
+        .map(|sk| {
+            let data = sk.as_str().unwrap_or("").trim();
+            if data.len() > 0 {
+                Some(data)
+            } else {
+                None
+            }
+        })
+        .flatten();
 
-    let controller_sk = SecretKey::from_slice(&hex::decode(&sk[2..]).map_err(|_e| Error::InvalidController)?)
-        .map_err(|_e| Error::InvalidController)?;
+    let (controller, controller_sk) = if let Some(sk) = fetch_controller {
+        let sk_values = serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
+        if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
+            return Err(Error::InvalidController);
+        }
+        let sk = COMMAND.decrypt(
+            sk_values["iv"].as_str().ok_or(Error::InvalidController)?,
+            sk_values["content"].as_str().ok_or(Error::InvalidController)?,
+        )?; // with 0x...
 
-    let controller = SecretKeyRef::new(&controller_sk).address();
+        let controller_sk = SecretKey::from_slice(&hex::decode(&sk[2..]).map_err(|_e| Error::InvalidController)?)
+            .map_err(|_e| Error::InvalidController)?;
+
+        let controller = SecretKeyRef::new(&controller_sk).address();
+        (controller, controller_sk)
+    } else {
+        (Default::default(), SecretKey::from_slice(&[0xcd; 32]).unwrap())
+    };
     info!("indexer: {:?}, controller: {:?}", indexer, controller);
 
     let new_account = Account {

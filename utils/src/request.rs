@@ -112,55 +112,67 @@ pub async fn proxy_request(
     }
 }
 
-// Request to jsonrpc service.(P2P RPC)
+// Request to jsonrpc service.(P2P channel RPC)
+pub fn jsonrpc_params(id: u64, method: &str, params: Vec<Value>) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method,
+        "params": params
+    })
+}
+
+pub fn jsonrpc_response(res: Result<Value, Error>) -> Result<Value, Value> {
+    match res {
+        Ok(data) => {
+            if data.get("result").is_some() {
+                if data["result"].is_array() {
+                    let mut res = vec![];
+                    for i in data["result"].as_array().unwrap() {
+                        let i_str = i.as_str().unwrap();
+                        match serde_json::from_str::<Value>(i_str) {
+                            Ok(r) => res.push(r),
+                            Err(_) => res.push(Value::from(i_str)),
+                        }
+                    }
+                    Ok(json!(res))
+                } else {
+                    let res = data["result"].as_str().unwrap_or("");
+                    if let Ok(json) = serde_json::from_str::<Value>(res) {
+                        if json.get("errors").is_some() {
+                            Err(json)
+                        } else {
+                            Ok(json)
+                        }
+                    } else {
+                        Ok(json!(res))
+                    }
+                }
+            } else if data.get("error").is_some() {
+                Err(json!(data["error"]["message"]))
+            } else {
+                Ok(json!("ok"))
+            }
+        }
+        Err(err) => Err(json!(err.to_status_message().1)),
+    }
+}
+
+// Request to jsonrpc service.(P2P http RPC)
 pub async fn jsonrpc_request(id: u64, url: &str, method: &str, params: Vec<Value>) -> Result<Value, Value> {
     let res = REQUEST_CLIENT
         .post(url)
         .header("content-type", "application/json")
-        .json(&json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params
-        }))
+        .json(&jsonrpc_params(id, method, params))
         .send()
         .await
         .unwrap();
 
     match res.error_for_status() {
-        Ok(res) => match res.json::<Value>().await {
-            Ok(data) => {
-                if data.get("result").is_some() {
-                    if data["result"].is_array() {
-                        let mut res = vec![];
-                        for i in data["result"].as_array().unwrap() {
-                            let i_str = i.as_str().unwrap();
-                            match serde_json::from_str::<Value>(i_str) {
-                                Ok(r) => res.push(r),
-                                Err(_) => res.push(Value::from(i_str)),
-                            }
-                        }
-                        Ok(json!(res))
-                    } else {
-                        let res = data["result"].as_str().unwrap_or("");
-                        if let Ok(json) = serde_json::from_str::<Value>(res) {
-                            if json.get("errors").is_some() {
-                                Err(json)
-                            } else {
-                                Ok(json)
-                            }
-                        } else {
-                            Ok(json!(res))
-                        }
-                    }
-                } else if data.get("error").is_some() {
-                    Err(json!(data["error"]["message"]))
-                } else {
-                    Ok(json!("ok"))
-                }
-            }
-            Err(err) => Err(json!(err.to_string())),
-        },
+        Ok(res) => {
+            let value = res.json::<Value>().await.map_err(|_e| Error::ServiceException);
+            jsonrpc_response(value)
+        }
         Err(err) => Err(json!(err.to_string())),
     }
 }

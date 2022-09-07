@@ -31,6 +31,7 @@ use web3::{
 };
 
 use crate::error::Error;
+use crate::tools::{cid_deployment, deployment_cid};
 
 pub struct OpenState {
     pub channel_id: U256,
@@ -144,13 +145,10 @@ impl OpenState {
             .map_err(|_e| Error::InvalidSerialize)?;
         let expiration = U256::from_dec_str(params["expiration"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
-        let deployment = hex::decode(params["deploymentId"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        if deployment.len() != 32 {
+        let deployment_id = cid_deployment(params["deploymentId"].as_str().ok_or(Error::InvalidSerialize)?);
+        if deployment_id == [0u8; 32] {
             return Err(Error::InvalidSerialize);
         }
-        let mut deployment_id = [0u8; 32];
-        deployment_id.copy_from_slice(&deployment);
         let callback = hex::decode(params["callback"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let indexer_sign: Signature =
@@ -180,7 +178,7 @@ impl OpenState {
             "consumer": format!("{:?}", self.consumer),
             "total": self.total.to_string(),
             "expiration": self.expiration.to_string(),
-            "deploymentId": hex::encode(&self.deployment_id),
+            "deploymentId": deployment_cid(&self.deployment_id),
             "callback": hex::encode(&self.callback),
             "indexerSign": convert_sign_to_string(&self.indexer_sign),
             "consumerSign": convert_sign_to_string(&self.consumer_sign),
@@ -194,6 +192,7 @@ pub struct QueryState {
     pub indexer: Address,
     pub consumer: Address,
     pub spent: U256,
+    pub remote: U256,
     pub is_final: bool,
     pub indexer_sign: Signature,
     pub consumer_sign: Signature,
@@ -214,6 +213,7 @@ impl QueryState {
             consumer,
             spent,
             is_final,
+            remote: spent,
             consumer_sign: default_sign(),
             indexer_sign: default_sign(),
         };
@@ -273,6 +273,8 @@ impl QueryState {
             .map_err(|_e| Error::InvalidSerialize)?;
         let spent = U256::from_dec_str(params["spent"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
+        let remote = U256::from_dec_str(params["remote"].as_str().ok_or(Error::InvalidSerialize)?)
+            .map_err(|_e| Error::InvalidSerialize)?;
         let is_final = params["isFinal"].as_bool().ok_or(Error::InvalidSerialize)?;
         let indexer_sign: Signature =
             convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
@@ -283,6 +285,7 @@ impl QueryState {
             indexer,
             consumer,
             spent,
+            remote,
             is_final,
             indexer_sign,
             consumer_sign,
@@ -295,6 +298,7 @@ impl QueryState {
             "indexer": format!("{:?}", self.indexer),
             "consumer": format!("{:?}", self.consumer),
             "spent": self.spent.to_string(),
+            "remote": self.remote.to_string(),
             "isFinal": self.is_final,
             "indexerSign": convert_sign_to_string(&self.indexer_sign),
             "consumerSign": convert_sign_to_string(&self.consumer_sign),
