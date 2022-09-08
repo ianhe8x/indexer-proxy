@@ -23,15 +23,22 @@ USAGE:
     subql-proxy [FLAGS] [OPTIONS] --secret-key <secret-key> --service-url <service-url>
 
 FLAGS:
-    -d, --debug      enable debug mode
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+    -a, --auth         enable auth
+    -d, --debug        enable debug mode
+        --dev          enable dev mode
+    -h, --help         Prints help information
+    -e, --p2p-relay    Check if running as relay
+    -V, --version      Prints version information
 
 OPTIONS:
-        --host <host>                  IP address for the server [default: 127.0.0.1]
-    -p, --port <port>                  Port the service will listen on [default: 8003]
-        --secret-key <secret-key>      Secret key for generating auth token
-        --service-url <service-url>    Coordinator service endpoint
+        --endpoint <endpoint>                Endpoint of this service [default: http://localhost:8003]
+        --host <host>                        IP address for the server [default: 127.0.0.1]
+    -r, --p2p-rpc <p2p-rpc>                  Rpc binding socket address [default: 127.0.0.1:7001]
+    -w, --p2p-ws <p2p-ws>                    Rpc binding socket address
+    -p, --port <port>                        Port the service will listen on [default: 8003]
+        --secret-key <secret-key>            Secret key for generating auth token
+        --service-url <service-url>          Coordinator service endpoint
+        --token-duration <token-duration>    auth token duration [default: 12]
 ```
 
 ## APIs
