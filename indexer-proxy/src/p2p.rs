@@ -22,10 +22,7 @@ use serde_json::{json, Value};
 use subql_proxy_utils::p2p::{GroupId, P2pHandler, PeerId, Response};
 use tokio::sync::RwLock;
 
-use crate::account::ACCOUNT;
-use crate::cli::COMMAND;
-use crate::payg::{open_state, query_state};
-use crate::project::{get_project, list_projects};
+use crate::payg::{merket_price, open_state, query_state};
 
 pub static PEER: Lazy<RwLock<PeerId>> = Lazy::new(|| RwLock::new(PeerId::random()));
 
@@ -44,34 +41,8 @@ impl P2pHandler for IndexerP2p {
     }
 
     async fn info_handle(group: Option<GroupId>) -> String {
-        let account = ACCOUNT.read().await;
-        let peer_str = PEER.read().await.to_base58();
-        let data = if let Some(group) = group {
-            let (id, price) = if let Ok(project) = get_project(&group.id()) {
-                (group.id(), project.price)
-            } else {
-                ("", "".to_owned())
-            };
-            json!({
-                "endpoint": COMMAND.endpoint(),
-                "peer": peer_str,
-                "indexer": format!("{:?}", account.indexer),
-                "controller": format!("{:?}", account.controller),
-                "deployment": id,
-                "price": price,
-            })
-        } else {
-            let projects = list_projects();
-            json!({
-                "endpoint": COMMAND.endpoint(),
-                "peer": peer_str,
-                "indexer": format!("{:?}", account.indexer),
-                "controller": format!("{:?}", account.controller),
-                "deployments": projects,
-            })
-        };
-        drop(account);
-
+        let project = group.map(|v| v.id().to_owned());
+        let data = merket_price(project).await;
         serde_json::to_string(&data).unwrap()
     }
 

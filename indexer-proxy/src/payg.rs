@@ -34,14 +34,56 @@ use web3::{signing::SecretKeyRef, types::U256};
 
 use crate::account::ACCOUNT;
 use crate::cli::COMMAND;
-use crate::project::get_project;
+use crate::p2p::PEER;
+use crate::project::{get_project, list_projects};
+
+pub async fn merket_price(project_id: Option<String>) -> Value {
+    let account = ACCOUNT.read().await;
+    let peer_str = PEER.read().await.to_base58();
+    let projects: Vec<(String, String)> = if let Some(pid) = project_id {
+        if let Ok(project) = get_project(&pid) {
+            if project.price == U256::from(0) {
+                vec![]
+            } else {
+                vec![(pid, project.price.to_string())]
+            }
+        } else {
+            vec![]
+        }
+    } else {
+        list_projects()
+            .iter()
+            .filter_map(|(pid, price)| {
+                if *price == U256::from(0) {
+                    None
+                } else {
+                    Some((pid.clone(), price.to_string()))
+                }
+            })
+            .collect()
+    };
+    json!({
+        "endpoint": COMMAND.endpoint(),
+        "peer": peer_str,
+        "indexer": format!("{:?}", account.indexer),
+        "controller": format!("{:?}", account.controller),
+        "deployments": projects,
+    })
+}
 
 pub async fn open_state(body: &Value) -> Result<Value, Error> {
     let mut state = OpenState::from_json(body)?;
 
-    // TODO check project is exists. unify the deployment id store style.
-
-    // TODO check project price.
+    // check project is exists. unify the deployment id store style.
+    let project_id = deployment_cid(&state.deployment_id);
+    if let Ok(project) = get_project(&project_id) {
+        // check project price.
+        if project.price != state.price {
+            return Err(Error::InvalidProjectPrice);
+        }
+    } else {
+        return Err(Error::InvalidProjectId);
+    }
 
     let account = ACCOUNT.read().await;
     let key = SecretKeyRef::new(&account.controller_sk);

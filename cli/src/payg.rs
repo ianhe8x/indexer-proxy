@@ -74,6 +74,7 @@ fn help() {
     println!("    eg. query query {{ _metadata {{ indexerHealthy chain }} }}");
 }
 
+#[allow(dead_code)]
 struct StateChannel {
     id: U256,
     indexer: Address,
@@ -90,6 +91,7 @@ struct StateChannel {
     last_consumer_sign: Signature,
 }
 
+#[allow(dead_code)]
 struct Indexer {
     endpoint: String,
     token: String,
@@ -145,6 +147,36 @@ async fn send_state(
     println!("\x1b[94m>>> TxHash: {:?}\x1b[00m", tx_hash);
 }
 
+#[allow(dead_code)]
+async fn token_approve(web3: &Web3<Http>, contract: &Contract<Http>, sk: &SecretKey, address: Address, amount: u128) {
+    println!("Approve SQT to: {:?} ...", address);
+    let fn_data = contract
+        .abi()
+        .function("increaseAllowance")
+        .and_then(|function| function.encode_input(&(address, U256::from(amount)).into_tokens()))
+        .unwrap();
+    let tx = TransactionParameters {
+        to: Some(contract.address()),
+        data: Bytes(fn_data),
+        ..Default::default()
+    };
+    let signed = web3.accounts().sign_transaction(tx, sk).await.unwrap();
+    let _tx_hash = web3.eth().send_raw_transaction(signed.raw_transaction).await.unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    let result: U256 = contract
+        .query(
+            "allowance",
+            (SecretKeyRef::new(sk).address(), address),
+            None,
+            Options::default(),
+            None,
+        )
+        .await
+        .unwrap();
+    println!("Approved SQT {:?}", result);
+}
+
 /// Prepare the consumer account and evm status.
 /// Run `cargo run --bin subql-cli-payg [moonbeam|testnet] [proxy|p2p]` default is local and p2p.
 #[tokio::main]
@@ -181,6 +213,9 @@ async fn main() {
     let state_channel = state_channel(web3.eth(), net).unwrap();
     let token = sqtoken(web3.eth(), net).unwrap();
 
+    // !IMPORTANT, only first time uncomment it to run.
+    // token_approve(&web3, &token, &consumer_sk, state_channel.address(), u128::MAX).await;
+
     // cid => StateChannel
     let mut channels: Vec<StateChannel> = vec![];
     let mut cid: usize = 0;
@@ -209,26 +244,32 @@ async fn main() {
         while let Some(msg) = out_recv.recv().await {
             let method = msg["method"].as_str().unwrap();
             if method == "deployment" {
-                let values: Value = serde_json::from_str(msg["result"].as_str().unwrap()).unwrap();
+                let result_str = msg["result"].as_str();
+                if result_str.is_none() {
+                    continue;
+                }
+                let values: Value = serde_json::from_str(result_str.unwrap()).unwrap();
+                let mut indexers = indexers_ref.write().await;
                 let indexer: Address = values["indexer"].as_str().unwrap().parse().unwrap();
                 let controller: Address = values["controller"].as_str().unwrap().parse().unwrap();
-                let price = U256::from_dec_str(values["price"].as_str().unwrap()).unwrap();
-                let endpoint = values["price"].as_str().unwrap().to_owned();
+                let endpoint = values["endpoint"].as_str().unwrap().to_owned();
                 let peer = values["peer"].as_str().unwrap().parse().unwrap();
-                let deployment_str = values["deployment"].as_str().unwrap();
-                let deployment = cid_deployment(deployment_str);
+                for value in values["deployments"].as_array().unwrap() {
+                    let project = value.as_array().unwrap();
+                    let deployment = cid_deployment(project[0].as_str().unwrap());
+                    let price = U256::from_dec_str(project[1].as_str().unwrap()).unwrap();
+                    let new_indexer = Indexer {
+                        endpoint: endpoint.clone(),
+                        peer,
+                        indexer,
+                        controller,
+                        deployment,
+                        price,
+                        token: "".to_owned(),
+                    };
+                    indexers.insert(indexer, new_indexer);
+                }
 
-                let new_indexer = Indexer {
-                    endpoint,
-                    peer,
-                    indexer,
-                    controller,
-                    deployment,
-                    price,
-                    token: "".to_owned(),
-                };
-                let mut indexers = indexers_ref.write().await;
-                indexers.insert(indexer, new_indexer);
                 drop(indexers);
             }
         }

@@ -28,6 +28,7 @@ use subql_proxy_utils::{
 };
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::{connect, Message};
+use web3::types::U256;
 
 use crate::cli::COMMAND;
 
@@ -36,10 +37,10 @@ pub static PROJECTS: Lazy<Mutex<HashMap<String, Project>>> = Lazy::new(|| Mutex:
 #[derive(Debug, Clone)]
 pub struct Project {
     pub query_endpoint: String,
-    pub price: String,
+    pub price: U256,
 }
 
-pub fn add_project(deployment_id: String, query_endpoint: String, price: String, is_init: bool) {
+pub fn add_project(deployment_id: String, query_endpoint: String, price: U256, is_init: bool) {
     let mut map = PROJECTS.lock().unwrap();
 
     #[cfg(feature = "p2p")]
@@ -66,12 +67,12 @@ pub fn get_project(key: &str) -> Result<Project, Error> {
     if let Some(url) = map.get(key) {
         Ok(url.clone())
     } else {
-        Err(Error::InvalidProejctId)
+        Err(Error::InvalidProjectId)
     }
 }
 
 /// list the project id and price
-pub fn list_projects() -> Vec<(String, String)> {
+pub fn list_projects() -> Vec<(String, U256)> {
     let mut projects = vec![];
     let map = PROJECTS.lock().unwrap();
     for (k, v) in map.iter() {
@@ -106,7 +107,8 @@ pub async fn fetch_projects(url: &str, is_init: bool) {
                 let v_str: String = serde_json::to_string(v_d).unwrap_or(String::from(""));
                 let v: ProjectsResponse = serde_json::from_str(v_str.as_str()).unwrap();
                 for item in v.get_alive_projects {
-                    add_project(item.id, item.query_endpoint, item.price, is_init);
+                    let price = U256::from_dec_str(&item.price).unwrap_or(U256::from(0));
+                    add_project(item.id, item.query_endpoint, price, is_init);
                 }
             }
         }
@@ -148,7 +150,7 @@ async fn subscribe_project_change(mut websocket_url: String) {
     let out_message = json!({
         "type": "start",
         "payload": {
-            "query": "subscription { projectChanged { id queryEndpoint price } }"
+            "query": "subscription { projectChanged { id queryEndpoint paygPrice } }"
         }
     })
     .to_string();
@@ -159,8 +161,8 @@ async fn subscribe_project_change(mut websocket_url: String) {
         let value: Value = serde_json::from_str(text).unwrap();
         if let Some(project) = value.pointer("/payload/data/projectChanged") {
             let item: ProjectItem = serde_json::from_str(project.to_string().as_str()).unwrap();
-            add_project(item.id, item.query_endpoint, item.price, false);
-
+            let price = U256::from_dec_str(&item.price).unwrap_or(U256::from(0));
+            add_project(item.id, item.query_endpoint, price, false);
             debug!("indexing projects: {:?}", PROJECTS.lock().unwrap());
         }
     }
