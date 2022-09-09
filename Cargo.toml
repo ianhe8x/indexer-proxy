@@ -2,8 +2,6 @@
 members = [
  "utils",
  "indexer-proxy",
- "consumer-proxy",
- "cli",
 ]
 resolver = "2"
 
