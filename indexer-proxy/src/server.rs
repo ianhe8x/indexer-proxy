@@ -26,18 +26,17 @@ use axum::{
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-
-use std::time::{SystemTime, UNIX_EPOCH};
 use subql_proxy_utils::{
     constants::HEADERS,
-    eip712::recover_signer,
+    eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
     query::METADATA_QUERY,
-    request::{graphql_request, proxy_request},
+    request::graphql_request,
 };
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::auth::{create_jwt, AuthQuery, Payload};
+use crate::contracts::check_agreement_and_consumer;
 use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::get_project;
 use crate::{account, cli::COMMAND, prometheus};
@@ -81,8 +80,25 @@ pub async fn start_server(host: &str, port: u16) {
 
 pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>, Error> {
     get_project(&payload.deployment_id)?;
-    let message = format!("{}{}{}", payload.indexer, payload.deployment_id, payload.timestamp);
-    let signer = recover_signer(message, &payload.signature).to_lowercase();
+
+    let signer = match (&payload.consumer, &payload.agreement) {
+        (Some(consumer), Some(agreement)) => recover_consumer_token_payload(
+            consumer,
+            &payload.indexer,
+            agreement,
+            &payload.deployment_id,
+            payload.timestamp,
+            payload.chain_id,
+            &payload.signature,
+        )?,
+        _ => recover_indexer_token_payload(
+            &payload.indexer,
+            &payload.deployment_id,
+            payload.timestamp,
+            payload.chain_id,
+            &payload.signature,
+        )?,
+    };
 
     let checked = if signer == payload.indexer.to_lowercase() {
         // if signer is indexer itself, return the token
@@ -91,39 +107,8 @@ pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>,
         // if singer is consumer, check signer is consumer,
         // and check whether the agreement is expired and the it is consistent with
         // `indexer` and `consumer`
-        match (&payload.consumer, &payload.agreement) {
-            (Some(consumer), Some(agreement)) => {
-                if signer == consumer.to_lowercase() {
-                    let res = proxy_request(
-                        "get",
-                        COMMAND.service_url(),
-                        &format!("/agreements/{}", agreement),
-                        "",
-                        "".to_owned(),
-                        vec![],
-                    )
-                    .await;
-                    if let Ok(data) = res {
-                        match (data.get("consumer"), data.get("startDate"), data.get("period")) {
-                            (Some(sac), Some(sstart), Some(speriod)) => {
-                                let ac = sac.as_str().unwrap_or("");
-                                let start = sstart.as_i64().unwrap_or(0);
-                                let period = speriod.as_i64().unwrap_or(0);
-                                let now = SystemTime::now()
-                                    .duration_since(UNIX_EPOCH)
-                                    .map(|s| s.as_secs())
-                                    .unwrap_or(0) as i64;
-                                now > (start + period) && ac.to_lowercase() == signer
-                            }
-                            _ => false,
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
+        match &payload.agreement {
+            Some(agreement) => check_agreement_and_consumer(&signer, agreement).await?,
             _ => false,
         }
     };

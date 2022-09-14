@@ -16,16 +16,152 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use web3::signing::{keccak256, recover};
+use ethers::types::{
+    transaction::eip712::{EIP712Domain, Eip712, Eip712DomainType, TypedData},
+    Signature,
+};
+use std::collections::BTreeMap;
 
-pub fn eth_message(message: String) -> [u8; 32] {
-    keccak256(format!("{}{}{}", "\x19Ethereum Signed Message:\n", message.len(), message).as_bytes())
+use crate::error::Error;
+
+pub fn recover_signer(message: String, sign_str: &str) -> Result<String, Error> {
+    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+    let address = signature.recover(message);
+    Ok(format!("{:02x?}", address))
 }
 
-pub fn recover_signer(message: String, signature: &str) -> String {
-    let msg = eth_message(message);
-    let sig = hex::decode(signature).unwrap();
-    let recover_id = sig[64] as i32 - 27;
-    let address = recover(&msg, &sig[..64], recover_id).unwrap();
-    format!("{:02X?}", address)
+pub fn recover_indexer_token_payload(
+    indexer: &str,
+    deployment_id: &str,
+    timestamp: i64,
+    chain_id: i64,
+    sign_str: &str,
+) -> Result<String, Error> {
+    let mut types = BTreeMap::new();
+    types.insert(
+        "EIP712Domain".to_owned(),
+        vec![
+            Eip712DomainType {
+                name: "name".to_owned(),
+                r#type: "string".to_owned(),
+            },
+            Eip712DomainType {
+                name: "chainId".to_owned(),
+                r#type: "uint256".to_owned(),
+            },
+        ],
+    );
+    types.insert(
+        "messageType".to_owned(),
+        vec![
+            Eip712DomainType {
+                name: "indexer".to_owned(),
+                r#type: "address".to_owned(),
+            },
+            Eip712DomainType {
+                name: "timestamp".to_owned(),
+                r#type: "uint256".to_owned(),
+            },
+            Eip712DomainType {
+                name: "deploymentId".to_owned(),
+                r#type: "string".to_owned(),
+            },
+        ],
+    );
+    let mut message = BTreeMap::new();
+    message.insert("indexer".to_owned(), indexer.into());
+    message.insert("timestamp".to_owned(), timestamp.into());
+    message.insert("deploymentId".to_owned(), deployment_id.into());
+
+    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+
+    let type_data = TypedData {
+        types,
+        message,
+        domain: EIP712Domain {
+            name: Some("Subquery".to_owned()),
+            version: None,
+            chain_id: Some(chain_id.into()),
+            verifying_contract: None,
+            salt: None,
+        },
+        primary_type: "messageType".to_owned(),
+    };
+    let msg = type_data.encode_eip712().map_err(|_| Error::InvalidSerialize)?;
+    let address = signature.recover(msg).map_err(|_| Error::InvalidSignature)?;
+    Ok(format!("{:02x?}", address))
+}
+
+pub fn recover_consumer_token_payload(
+    consumer: &str,
+    indexer: &str,
+    agreement: &str,
+    deployment_id: &str,
+    timestamp: i64,
+    chain_id: i64,
+    sign_str: &str,
+) -> Result<String, Error> {
+    let mut types = BTreeMap::new();
+    types.insert(
+        "EIP712Domain".to_owned(),
+        vec![
+            Eip712DomainType {
+                name: "name".to_owned(),
+                r#type: "string".to_owned(),
+            },
+            Eip712DomainType {
+                name: "chainId".to_owned(),
+                r#type: "uint256".to_owned(),
+            },
+        ],
+    );
+    types.insert(
+        "messageType".to_owned(),
+        vec![
+            Eip712DomainType {
+                name: "consumer".to_owned(),
+                r#type: "address".to_owned(),
+            },
+            Eip712DomainType {
+                name: "indexer".to_owned(),
+                r#type: "address".to_owned(),
+            },
+            Eip712DomainType {
+                name: "agreement".to_owned(),
+                r#type: "string".to_owned(),
+            },
+            Eip712DomainType {
+                name: "timestamp".to_owned(),
+                r#type: "uint256".to_owned(),
+            },
+            Eip712DomainType {
+                name: "deploymentId".to_owned(),
+                r#type: "string".to_owned(),
+            },
+        ],
+    );
+    let mut message = BTreeMap::new();
+    message.insert("consumer".to_owned(), consumer.into());
+    message.insert("indexer".to_owned(), indexer.into());
+    message.insert("agreement".to_owned(), agreement.into());
+    message.insert("timestamp".to_owned(), timestamp.into());
+    message.insert("deploymentId".to_owned(), deployment_id.into());
+
+    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+
+    let type_data = TypedData {
+        types,
+        message,
+        domain: EIP712Domain {
+            name: Some("Subquery".to_owned()),
+            version: None,
+            chain_id: Some(chain_id.into()),
+            verifying_contract: None,
+            salt: None,
+        },
+        primary_type: "messageType".to_owned(),
+    };
+    let msg = type_data.encode_eip712().map_err(|_| Error::InvalidSerialize)?;
+    let address = signature.recover(msg).map_err(|_| Error::InvalidSignature)?;
+    Ok(format!("{:02x?}", address))
 }

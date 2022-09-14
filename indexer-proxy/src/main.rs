@@ -23,6 +23,7 @@ extern crate tracing;
 mod account;
 mod auth;
 mod cli;
+mod contracts;
 mod payg;
 mod project;
 mod prometheus;

@@ -28,9 +28,6 @@ use subql_proxy_utils::{error::Error, types::Result};
 
 use crate::cli::COMMAND;
 
-// FIXME: use `secret_key` from commandline args
-const JWT_SECRET: &[u8] = b"secret";
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Payload {
     /// indexer address
@@ -80,7 +77,12 @@ pub fn create_jwt(payload: Payload) -> Result<String> {
         exp: expiration,
     };
 
-    encode(&header, &claims, &EncodingKey::from_secret(JWT_SECRET)).map_err(|_| Error::JWTTokenCreationError)
+    encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
+    )
+    .map_err(|_| Error::JWTTokenCreationError)
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -111,7 +113,7 @@ where
 
         let decoded = decode::<Claims>(
             jwt,
-            &DecodingKey::from_secret(JWT_SECRET),
+            &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
             &Validation::new(Algorithm::HS512),
         )
         .map_err(|_| Error::JWTTokenError)?;

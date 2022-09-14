@@ -23,14 +23,14 @@ use axum::{
     extract::{FromRequest, RequestParts},
     http::header::AUTHORIZATION,
 };
+use ethers::types::U256;
 use serde_json::{json, Value};
 use subql_proxy_utils::{
     error::Error,
-    payg::{convert_sign_to_string, OpenState, QueryState},
+    payg::{OpenState, QueryState},
     request::graphql_request,
     tools::deployment_cid,
 };
-use web3::{signing::SecretKeyRef, types::U256};
 
 use crate::account::ACCOUNT;
 use crate::cli::COMMAND;
@@ -86,8 +86,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
     }
 
     let account = ACCOUNT.read().await;
-    let key = SecretKeyRef::new(&account.controller_sk);
-    state.sign(key, false)?;
+    state.sign(&account.controller, false).await?;
     drop(account);
 
     let (_, _consumer) = state.recover()?;
@@ -116,11 +115,10 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
         state.expiration,
         deployment_cid(&state.deployment_id),
         hex::encode(&state.callback),
-        convert_sign_to_string(&state.indexer_sign),
-        convert_sign_to_string(&state.consumer_sign),
+        state.indexer_sign,
+        state.consumer_sign,
         state.price,
     );
-    println!("{}", mdata);
 
     let query = json!({ "query": mdata });
     let result = graphql_request(&url, &query)
@@ -147,8 +145,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let mut state = QueryState::from_json(state)?;
 
     let account = ACCOUNT.read().await;
-    let key = SecretKeyRef::new(&account.controller_sk);
-    state.sign(key, false)?;
+    state.sign(&account.controller, false).await?;
     drop(account);
     let (_, _signer) = state.recover()?;
     // TODO more verify the signer
@@ -156,9 +153,9 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     // query the data.
     let data = match graphql_request(&project.query_endpoint, query).await {
         Ok(result) => {
-            let string = serde_json::to_string(&result).unwrap(); // safe unwrap
-            let _sign = crate::account::sign_message(string.as_bytes()); // TODO add to header
+            let _string = serde_json::to_string(&result).unwrap(); // safe unwrap
 
+            // let _sign = sign_message(string.as_bytes()); // TODO add to header
             // TODO add state to header and request to coordiantor know the response.
 
             Ok(result)
@@ -178,11 +175,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
                consumerSign:"0x{}")
            {{ id, spent }}
         }}"#,
-        state.channel_id,
-        state.spent,
-        state.is_final,
-        convert_sign_to_string(&state.indexer_sign),
-        convert_sign_to_string(&state.consumer_sign)
+        state.channel_id, state.spent, state.is_final, state.indexer_sign, state.consumer_sign
     );
 
     let query = json!({ "query": mdata });

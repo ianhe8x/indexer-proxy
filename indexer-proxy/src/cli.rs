@@ -20,6 +20,7 @@ use once_cell::sync::Lazy;
 use openssl::symm::{decrypt, Cipher};
 use std::net::SocketAddr;
 use structopt::StructOpt;
+use subql_contracts::Network;
 use subql_proxy_utils::error::Error;
 
 #[cfg(feature = "p2p")]
@@ -47,19 +48,19 @@ pub struct CommandLineArgs {
     /// Coordinator service endpoint
     #[structopt(long = "service-url")]
     pub service_url: String,
-    /// Secret key for generating auth token
+    /// Secret key for decrypt key
     #[structopt(long = "secret-key")]
     pub secret_key: String,
-    /// enable auth
+    /// Enable auth
     #[structopt(short = "a", long = "auth")]
     pub auth: bool,
-    /// auth token duration
+    /// Auth token duration
     #[structopt(long = "token-duration", default_value = "12")]
     pub token_duration: i64,
-    /// enable debug mode
+    /// Enable debug mode
     #[structopt(short = "d", long = "debug")]
     pub debug: bool,
-    /// enable dev mode
+    /// Enable dev mode
     #[structopt(long = "dev")]
     pub dev: bool,
     /// Rpc binding socket address.
@@ -71,6 +72,15 @@ pub struct CommandLineArgs {
     /// Check if running as relay.
     #[structopt(short = "e", long = "p2p-relay")]
     pub p2p_relay: bool,
+    /// Secret key for generate auth token
+    #[structopt(short = "j", long = "jwt-secret", default_value = "needchange")]
+    pub jwt_secret: String,
+    /// Blockchain network type.
+    #[structopt(long = "network")]
+    pub network: String,
+    /// Blockchain network endpoint.
+    #[structopt(long = "network-endpoint")]
+    pub network_endpoint: String,
 }
 
 impl CommandLineArgs {
@@ -84,10 +94,6 @@ impl CommandLineArgs {
 
     pub fn port(&self) -> u16 {
         self.port
-    }
-
-    pub fn service_url(&self) -> &str {
-        &self.service_url
     }
 
     pub fn graphql_url(&self) -> String {
@@ -138,6 +144,23 @@ impl CommandLineArgs {
             SEED_ADDR.parse().unwrap()
         } else {
             P2P_ADDR.parse().unwrap()
+        }
+    }
+
+    pub fn jwt_secret(&self) -> &str {
+        &self.jwt_secret
+    }
+
+    pub fn network_endpoint(&self) -> &str {
+        &self.network_endpoint
+    }
+
+    pub fn network(&self) -> Network {
+        match self.network.as_str() {
+            "testnet" => Network::Testnet,
+            "moonbase" => Network::Moonbase,
+            "mainnet" => Network::Mainnet,
+            _ => Network::Testnet,
         }
     }
 }

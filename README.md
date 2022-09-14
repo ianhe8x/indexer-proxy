@@ -10,7 +10,7 @@
 ### Start `proxy server`
 
 - `cargo build`
-- `./target/debug/indexer-proxy --secret-key your-key --service-url http://127.0.0.1:8000`
+- `./target/debug/indexer-proxy --secret-key your-key --service-url http://127.0.0.1:8000 --network moonbase --network-endpoint https://moonbeam-alpha.api.onfinality.io/public`
 
 ### Output help menu
 
@@ -20,7 +20,7 @@ Indexer Proxy 0.1.0
 Command line for starting indexer proxy server
 
 USAGE:
-    subql-proxy [FLAGS] [OPTIONS] --secret-key <secret-key> --service-url <service-url>
+    subql-proxy [FLAGS] [OPTIONS] --secret-key <secret-key> --service-url <service-url> --network <network> --network-endpoint <network-endpoint>
 
 FLAGS:
     -a, --auth         enable auth
@@ -39,6 +39,8 @@ OPTIONS:
         --secret-key <secret-key>            Secret key for generating auth token
         --service-url <service-url>          Coordinator service endpoint
         --token-duration <token-duration>    auth token duration [default: 12]
+        --network <network>                 Blockchain network type.
+        --network-endpoint <network-endpoint> Blockchain network endpoint.
 ```
 
 ## APIs

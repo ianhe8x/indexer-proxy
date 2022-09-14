@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use ethers::types::U256;
 use once_cell::sync::Lazy;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,6 @@ use subql_proxy_utils::{
 };
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::{connect, Message};
-use web3::types::U256;
 
 use crate::cli::COMMAND;
 

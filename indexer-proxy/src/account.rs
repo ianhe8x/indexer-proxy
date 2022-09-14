@@ -16,32 +16,30 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use ethers::{
+    signers::{LocalWallet, Signer},
+    types::Address,
+};
 use once_cell::sync::Lazy;
-use secp256k1::{SecretKey, ONE_KEY};
 use serde_json::json;
 use subql_proxy_utils::{error::Error, request::graphql_request, types::Result};
 use tokio::sync::RwLock;
-use web3::{
-    signing::{Key, SecretKeyRef},
-    types::Address,
-};
 
 use crate::cli::COMMAND;
 
 pub struct Account {
     pub indexer: Address,
-    pub controller: Address,
-    pub controller_sk: SecretKey,
+    pub controller: LocalWallet,
 }
 
 impl Default for Account {
     fn default() -> Self {
-        let controller_sk = ONE_KEY;
-        let controller = SecretKeyRef::new(&controller_sk).address();
+        let wallet = "0000000000000000000000000000000000000000000000000000000000000001"
+            .parse::<LocalWallet>()
+            .unwrap();
         Self {
             indexer: Address::default(),
-            controller,
-            controller_sk,
+            controller: wallet,
         }
     }
 }
@@ -74,7 +72,7 @@ pub async fn fetch_account_metadata() -> Result<()> {
         })
         .flatten();
 
-    let (controller, controller_sk) = if let Some(sk) = fetch_controller {
+    let controller = if let Some(sk) = fetch_controller {
         let sk_values = serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
         if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
             return Err(Error::InvalidController);
@@ -84,21 +82,15 @@ pub async fn fetch_account_metadata() -> Result<()> {
             sk_values["content"].as_str().ok_or(Error::InvalidController)?,
         )?; // with 0x...
 
-        let controller_sk = SecretKey::from_slice(&hex::decode(&sk[2..]).map_err(|_e| Error::InvalidController)?)
-            .map_err(|_e| Error::InvalidController)?;
-
-        let controller = SecretKeyRef::new(&controller_sk).address();
-        (controller, controller_sk)
+        sk[2..].parse::<LocalWallet>().map_err(|_| Error::InvalidController)?
     } else {
-        (Default::default(), SecretKey::from_slice(&[0xcd; 32]).unwrap())
+        "0000000000000000000000000000000000000000000000000000000000000001"
+            .parse::<LocalWallet>()
+            .unwrap()
     };
-    info!("indexer: {:?}, controller: {:?}", indexer, controller);
+    info!("indexer: {:?}, controller: {:?}", indexer, controller.address());
 
-    let new_account = Account {
-        indexer,
-        controller,
-        controller_sk,
-    };
+    let new_account = Account { indexer, controller };
     let mut account = ACCOUNT.write().await;
     *account = new_account;
 
@@ -107,9 +99,4 @@ pub async fn fetch_account_metadata() -> Result<()> {
 
 pub async fn get_indexer() -> String {
     format!("{:?}", ACCOUNT.read().await.indexer)
-}
-
-pub fn sign_message(_msg: &[u8]) -> String {
-    // TODO sign message to prove the result.
-    "".to_owned()
 }
