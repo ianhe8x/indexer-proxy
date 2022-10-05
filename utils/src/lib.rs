@@ -19,9 +19,6 @@
 #![allow(clippy::or_fun_call)]
 #![allow(clippy::too_many_arguments)]
 
-#[macro_use]
-extern crate tracing;
-
 pub mod constants;
 pub mod eip712;
 pub mod error;
@@ -31,6 +28,3 @@ pub mod request;
 pub mod tools;
 pub mod traits;
 pub mod types;
-
-#[cfg(feature = "p2p")]
-pub mod p2p;

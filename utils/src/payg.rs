@@ -21,7 +21,7 @@
 use ethers::{
     abi::{encode, Tokenizable},
     signers::Signer,
-    types::{Address, Signature, U256},
+    types::{Address, Signature, H256, U256},
     utils::keccak256,
 };
 use rand_chacha::{
@@ -39,7 +39,7 @@ pub struct OpenState {
     pub consumer: Address,
     pub total: U256,
     pub expiration: U256,
-    pub deployment_id: [u8; 32],
+    pub deployment_id: H256,
     pub callback: Vec<u8>,
     pub indexer_sign: Signature,
     pub consumer_sign: Signature,
@@ -53,7 +53,7 @@ impl OpenState {
         consumer: Address,
         total: U256,
         expiration: U256,
-        deployment_id: [u8; 32],
+        deployment_id: H256,
         callback: Vec<u8>,
         key: &impl Signer,
     ) -> Result<Self, Error> {
@@ -85,33 +85,7 @@ impl OpenState {
     }
 
     pub fn recover(&self) -> Result<(Address, Address), Error> {
-        let msg = encode(&[
-            self.channel_id.into_token(),
-            self.indexer.into_token(),
-            self.consumer.into_token(),
-            self.expiration.into_token(),
-            self.deployment_id.into_token(),
-            self.callback.clone().into_token(),
-        ]);
-        //let mut bytes = "\x19Ethereum Signed Message:\n32".as_bytes().to_vec();
-        //bytes.extend(keccak256(&msg));
-        //let payload = keccak256(&bytes);
-        //let (i_sign, i_id) = convert_recovery_sign(&self.indexer_sign);
-        //let (c_sign, c_id) = convert_recovery_sign(&self.consumer_sign);
-        let payload = keccak256(&msg);
-        let indexer = self
-            .indexer_sign
-            .recover(payload)
-            .map_err(|_| Error::InvalidSignature)?;
-        let consumer = self
-            .consumer_sign
-            .recover(payload)
-            .map_err(|_| Error::InvalidSignature)?;
-        Ok((indexer, consumer))
-    }
-
-    pub async fn sign(&mut self, key: &impl Signer, is_consumer: bool) -> Result<(), Error> {
-        let msg = encode(&[
+        let payload = encode(&[
             self.channel_id.into_token(),
             self.indexer.into_token(),
             self.consumer.into_token(),
@@ -120,8 +94,24 @@ impl OpenState {
             self.deployment_id.into_token(),
             self.callback.clone().into_token(),
         ]);
-        let payload = keccak256(&msg);
-        let sign = key.sign_message(&payload).await.map_err(|_| Error::InvalidSignature)?;
+        let hash = keccak256(payload);
+        let indexer = self.indexer_sign.recover(&hash[..])?;
+        let consumer = self.consumer_sign.recover(&hash[..])?;
+        Ok((indexer, consumer))
+    }
+
+    pub async fn sign(&mut self, key: &impl Signer, is_consumer: bool) -> Result<(), Error> {
+        let payload = encode(&[
+            self.channel_id.into_token(),
+            self.indexer.into_token(),
+            self.consumer.into_token(),
+            self.total.into_token(),
+            self.expiration.into_token(),
+            self.deployment_id.into_token(),
+            self.callback.clone().into_token(),
+        ]);
+        let hash = keccak256(payload);
+        let sign = key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -151,21 +141,15 @@ impl OpenState {
         let expiration = U256::from_dec_str(params["expiration"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let deployment_id = cid_deployment(params["deploymentId"].as_str().ok_or(Error::InvalidSerialize)?);
-        if deployment_id == [0u8; 32] {
+        if deployment_id == H256::zero() {
             return Err(Error::InvalidSerialize);
         }
         let callback = hex::decode(params["callback"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
-        let indexer_sign: Signature = params["indexerSign"]
-            .as_str()
-            .ok_or(Error::InvalidSerialize)?
-            .parse()
-            .map_err(|_| Error::InvalidSerialize)?;
-        let consumer_sign: Signature = params["consumerSign"]
-            .as_str()
-            .ok_or(Error::InvalidSerialize)?
-            .parse()
-            .map_err(|_| Error::InvalidSerialize)?;
+        let indexer_sign: Signature =
+            convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
+        let consumer_sign: Signature =
+            convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
         let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         Ok(Self {
@@ -191,8 +175,8 @@ impl OpenState {
             "expiration": self.expiration.to_string(),
             "deploymentId": deployment_cid(&self.deployment_id),
             "callback": hex::encode(&self.callback),
-            "indexerSign": format!("{}", self.indexer_sign),
-            "consumerSign": format!("{}", self.consumer_sign),
+            "indexerSign": convert_sign_to_string(&self.indexer_sign),
+            "consumerSign": convert_sign_to_string(&self.consumer_sign),
             "price": self.price.to_string(),
         })
     }
@@ -233,35 +217,25 @@ impl QueryState {
     }
 
     pub fn recover(&self) -> Result<(Address, Address), Error> {
-        let msg = encode(&[
+        let payload = encode(&[
             self.channel_id.into_token(),
             self.spent.into_token(),
             self.is_final.into_token(),
         ]);
-        let payload = keccak256(&msg);
-        let indexer = self
-            .indexer_sign
-            .recover(payload)
-            .map_err(|_| Error::InvalidSignature)?;
-        let consumer = self
-            .consumer_sign
-            .recover(payload)
-            .map_err(|_| Error::InvalidSignature)?;
-        //let (i_sign, i_id) = convert_recovery_sign(&self.indexer_sign);
-        //let (c_sign, c_id) = convert_recovery_sign(&self.consumer_sign);
-        //let indexer = recover(&payload, &i_sign, i_id).;
-        //let consumer = recover(&payload, &c_sign, c_id).map_err(|_| Error::InvalidSignature)?;
+        let hash = keccak256(payload);
+        let indexer = self.indexer_sign.recover(&hash[..])?;
+        let consumer = self.consumer_sign.recover(&hash[..])?;
         Ok((indexer, consumer))
     }
 
     pub async fn sign(&mut self, key: &impl Signer, is_consumer: bool) -> Result<(), Error> {
-        let msg = encode(&[
+        let payload = encode(&[
             self.channel_id.into_token(),
             self.spent.into_token(),
             self.is_final.into_token(),
         ]);
-        let payload = keccak256(&msg);
-        let sign = key.sign_message(&payload).await.map_err(|_| Error::InvalidSignature)?;
+        let hash = keccak256(payload);
+        let sign = key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -291,16 +265,10 @@ impl QueryState {
         let remote = U256::from_dec_str(params["remote"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let is_final = params["isFinal"].as_bool().ok_or(Error::InvalidSerialize)?;
-        let indexer_sign: Signature = params["indexerSign"]
-            .as_str()
-            .ok_or(Error::InvalidSerialize)?
-            .parse()
-            .map_err(|_| Error::InvalidSerialize)?;
-        let consumer_sign: Signature = params["consumerSign"]
-            .as_str()
-            .ok_or(Error::InvalidSerialize)?
-            .parse()
-            .map_err(|_| Error::InvalidSerialize)?;
+        let indexer_sign: Signature =
+            convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
+        let consumer_sign: Signature =
+            convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
         Ok(Self {
             channel_id,
             indexer,
@@ -321,8 +289,8 @@ impl QueryState {
             "spent": self.spent.to_string(),
             "remote": self.remote.to_string(),
             "isFinal": self.is_final,
-            "indexerSign": format!("{}", self.indexer_sign),
-            "consumerSign": format!("{}", self.consumer_sign),
+            "indexerSign": convert_sign_to_string(&self.indexer_sign),
+            "consumerSign": convert_sign_to_string(&self.consumer_sign),
         })
     }
 }
@@ -333,4 +301,38 @@ pub fn default_sign() -> Signature {
         r: U256::from(0),
         s: U256::from(0),
     }
+}
+
+/// Convert eth signature to string.
+pub fn convert_sign_to_string(sign: &Signature) -> String {
+    let bytes = convert_sign_to_bytes(sign);
+    hex::encode(&bytes)
+}
+
+/// Convert string to eth signature.
+pub fn convert_string_to_sign(s: &str) -> Signature {
+    let mut bytes = hex::decode(s).unwrap_or(vec![0u8; 65]); // 32 + 32 + 1
+
+    if bytes.len() < 65 {
+        bytes.extend(vec![0u8; 65 - bytes.len()]);
+    }
+
+    let r = U256::from_big_endian(&bytes[0..32]);
+    let s = U256::from_big_endian(&bytes[32..64]);
+    let v = bytes[64] as u64;
+    Signature { r, s, v }
+}
+
+/// Convert eth signature to bytes.
+pub fn convert_sign_to_bytes(sign: &Signature) -> [u8; 65] {
+    let mut bytes = <[u8; 65]>::from(sign);
+    let mut recovery_id = match sign.v {
+        27 => 0,
+        28 => 1,
+        v if v >= 35 => ((v - 1) % 2) as u8,
+        _ => sign.v as u8,
+    };
+    recovery_id += 27; // Because in ETH.
+    bytes[64] = recovery_id;
+    bytes
 }

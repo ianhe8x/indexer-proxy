@@ -36,6 +36,7 @@ pub enum Error {
     ServiceException,
     InvalidProjectId,
     InvalidProjectPrice,
+    InvalidProjectExpiration,
     InvalidServiceEndpoint,
     InvalidController,
     InvalidSerialize,
@@ -67,6 +68,7 @@ impl Error {
             Error::InvalidAuthHeaderError => (StatusCode::BAD_REQUEST, "invalid auth header".to_owned()),
             Error::InvalidProjectId => (StatusCode::BAD_REQUEST, "invalid project id".to_owned()),
             Error::InvalidProjectPrice => (StatusCode::BAD_REQUEST, "invalid project price".to_owned()),
+            Error::InvalidProjectExpiration => (StatusCode::BAD_REQUEST, "invalid project expiration".to_owned()),
             Error::InvalidServiceEndpoint => (
                 StatusCode::BAD_REQUEST,
                 "invalid coordinator service endpoint".to_owned(),
@@ -112,5 +114,17 @@ impl From<uint::FromHexError> for Error {
 impl From<ethereum_types::FromDecStrErr> for Error {
     fn from(_err: ethereum_types::FromDecStrErr) -> Error {
         Error::InvalidSerialize
+    }
+}
+
+impl From<ethers::types::SignatureError> for Error {
+    fn from(_err: ethers::types::SignatureError) -> Error {
+        Error::InvalidSignature
+    }
+}
+
+impl From<ethers::signers::WalletError> for Error {
+    fn from(_err: ethers::signers::WalletError) -> Error {
+        Error::InvalidController
     }
 }

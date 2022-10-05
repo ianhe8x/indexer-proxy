@@ -1,7 +1,8 @@
 [workspace]
 members = [
  "utils",
- "indexer-proxy",
+ "proxy",
+ "p2p",
 ]
 resolver = "2"
 
