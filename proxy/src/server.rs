@@ -100,21 +100,21 @@ pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>,
         )?,
     };
 
-    let checked = if signer == payload.indexer.to_lowercase() {
+    let (checked, daily, rate) = if signer == payload.indexer.to_lowercase() {
         // if signer is indexer itself, return the token
-        true
+        (true, 0, 0)
     } else {
         // if singer is consumer, check signer is consumer,
         // and check whether the agreement is expired and the it is consistent with
         // `indexer` and `consumer`
         match &payload.agreement {
             Some(agreement) => check_agreement_and_consumer(&signer, agreement).await?,
-            _ => false,
+            _ => (false, 0, 0),
         }
     };
 
     if checked {
-        let token = create_jwt(payload)?;
+        let token = create_jwt(payload, daily, rate).await?;
         Ok(Json(json!(QueryToken { token })))
     } else {
         Err(Error::JWTTokenCreationError)

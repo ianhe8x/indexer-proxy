@@ -13,6 +13,8 @@ RUN npm install --global yarn
 RUN node --version
 RUN yarn --version
 
+RUN apt install redis
+
 RUN update-ca-certificates
 
 # Create appuser

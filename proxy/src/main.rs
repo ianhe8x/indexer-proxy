@@ -76,5 +76,7 @@ async fn main() {
         });
     }
 
+    cli::init_redis().await;
+
     server::start_server(host, port).await;
 }

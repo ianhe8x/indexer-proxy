@@ -44,6 +44,8 @@ pub enum Error {
     InvalidEncrypt,
     InvalidRequest,
     PaygConflict,
+    DailyLimit,
+    RateLimit,
 }
 
 impl Error {
@@ -79,6 +81,8 @@ impl Error {
             Error::InvalidEncrypt => (StatusCode::BAD_REQUEST, "invalid encrypt or decrypt".to_owned()),
             Error::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid request".to_owned()),
             Error::PaygConflict => (StatusCode::BAD_REQUEST, "PAYG conflict".to_owned()),
+            Error::DailyLimit => (StatusCode::BAD_REQUEST, "exceed daily limit".to_owned()),
+            Error::RateLimit => (StatusCode::BAD_REQUEST, "exceed rate limit".to_owned()),
         }
     }
 }

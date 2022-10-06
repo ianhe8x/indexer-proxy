@@ -82,7 +82,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
             return Err(Error::InvalidProjectPrice);
         }
         // check project expiration
-        if U256::from(project.payg_expiration) > state.expiration {
+        if U256::from(project.payg_expiration) < state.expiration {
             return Err(Error::InvalidProjectExpiration);
         }
     } else {

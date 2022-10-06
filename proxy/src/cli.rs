@@ -18,12 +18,26 @@
 
 use once_cell::sync::Lazy;
 use openssl::symm::{decrypt, Cipher};
+use redis::aio::Connection;
 use structopt::StructOpt;
 use subql_contracts::Network;
 use subql_utils::error::Error;
+use tokio::sync::{Mutex, OnceCell};
 
 #[cfg(feature = "p2p")]
 use subql_p2p::{libp2p::Multiaddr, primitives::DEFAULT_P2P_ADDR};
+
+pub static REDIS: OnceCell<Mutex<Connection>> = OnceCell::const_new();
+
+pub fn redis<'a>() -> &'a Mutex<Connection> {
+    REDIS.get().expect("REDIS lost connections")
+}
+
+pub async fn init_redis() {
+    let client = redis::Client::open(COMMAND.redis_endpoint()).unwrap();
+    let conn = Mutex::new(client.get_async_connection().await.unwrap());
+    REDIS.set(conn).map_err(|_e| "redis connection failure").unwrap();
+}
 
 pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args);
 
@@ -48,7 +62,7 @@ pub struct CommandLineArgs {
     /// Enable auth
     #[structopt(short = "a", long = "auth")]
     pub auth: bool,
-    /// Auth token duration
+    /// Auth token duration hours
     #[structopt(long = "token-duration", default_value = "12")]
     pub token_duration: i64,
     /// Enable debug mode
@@ -69,6 +83,9 @@ pub struct CommandLineArgs {
     /// Blockchain network endpoint.
     #[structopt(long = "network-endpoint")]
     pub network_endpoint: String,
+    /// Redis client address
+    #[structopt(long = "redis-endpoint", default_value = "redis://127.0.0.1/")]
+    pub redis_endpoint: String,
 }
 
 impl CommandLineArgs {
@@ -138,5 +155,9 @@ impl CommandLineArgs {
             "mainnet" => Network::Mainnet,
             _ => Network::Testnet,
         }
+    }
+
+    pub fn redis_endpoint(&self) -> &str {
+        &self.redis_endpoint
     }
 }
