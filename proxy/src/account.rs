@@ -51,14 +51,15 @@ pub async fn fetch_account_metadata() -> Result<()> {
     let query = json!({"query": "query { accountMetadata { indexer controller } }" });
     let result = graphql_request(&url, &query).await;
     let value = result.map_err(|_e| Error::InvalidServiceEndpoint)?;
+
     let indexer: Address = value
         .pointer("/data/accountMetadata/indexer")
         .ok_or(Error::InvalidServiceEndpoint)?
         .as_str()
-        .unwrap_or("")
+        .unwrap_or("0x0000000000000000000000000000000000000000")
         .trim()
         .parse()
-        .map_err(|_e| Error::InvalidServiceEndpoint)?;
+        .unwrap_or(Address::default());
 
     let fetch_controller = value
         .pointer("/data/accountMetadata/controller")
