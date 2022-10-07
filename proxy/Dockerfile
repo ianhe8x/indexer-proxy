@@ -32,7 +32,6 @@ RUN adduser \
 WORKDIR /subql
 
 RUN git clone https://github.com/subquery/indexer-proxy.git .
-RUN git checkout fix-sign
 
 RUN cargo build --release
 
