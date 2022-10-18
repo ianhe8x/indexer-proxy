@@ -74,24 +74,29 @@ pub async fn check_agreement_and_consumer(signer: &str, aid: &str) -> Result<(bo
     } else {
         true
     };
-    let checked = start <= now && now <= (start + period) && allow;
 
-    let plan_info: Token = plan
-        .method::<_, Token>("getPlanTemplate", (template_id,))
-        .map_err(|_| Error::ServiceException)?
-        .call()
-        .await
-        .map_err(|_| Error::ServiceException)?;
-    let plan_template = match plan_info {
-        Token::Tuple(infos) => infos,
-        _ => vec![],
+    let checked = start <= now && now <= (start + period) && allow;
+    let (daily, rate) = if checked {
+        let plan_info: Token = plan
+            .method::<_, Token>("getPlanTemplate", (template_id,))
+            .map_err(|_| Error::ServiceException)?
+            .call()
+            .await
+            .map_err(|_| Error::ServiceException)?;
+        let infos = match plan_info {
+            Token::Tuple(infos) => infos,
+            _ => vec![],
+        };
+        // (_period, dailyReqCap, rateLimit, _metadata, _active) = planManager.getPlanTemplate(_planTemplateId);
+        if infos.len() < 3 {
+            return Err(Error::InvalidSerialize);
+        }
+        let daily = infos[1].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
+        let rate = infos[2].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
+        (daily, rate)
+    } else {
+        (0, 0)
     };
-    // (_period, dailyReqCap, rateLimit, _metadata, _active) = planManager.getPlanTemplate(_planTemplateId);
-    if plan_template.len() < 6 {
-        return Err(Error::InvalidSerialize);
-    }
-    let daily = infos[1].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
-    let rate = infos[2].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
 
     Ok((checked, daily, rate))
 }

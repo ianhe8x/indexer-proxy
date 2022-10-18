@@ -45,16 +45,16 @@ pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args
 #[structopt(name = "Indexer Proxy", about = "Command line for starting indexer proxy server")]
 pub struct CommandLineArgs {
     /// Endpoint of this service
-    #[structopt(long = "endpoint", default_value = "http://localhost:8003")]
+    #[structopt(long = "endpoint", default_value = "http://127.0.0.1:80")]
     pub endpoint: String,
     /// IP address for the server
     #[structopt(long = "host", default_value = "127.0.0.1")]
     pub host: String,
     /// Port the service will listen on
-    #[structopt(short = "p", long = "port", default_value = "8003")]
+    #[structopt(short = "p", long = "port", default_value = "80")]
     pub port: u16,
     /// Coordinator service endpoint
-    #[structopt(long = "service-url")]
+    #[structopt(long = "service-url", default_value = "http://127.0.0.1:8000")]
     pub service_url: String,
     /// Secret key for decrypt key
     #[structopt(long = "secret-key")]
@@ -75,17 +75,23 @@ pub struct CommandLineArgs {
     #[structopt(long = "p2p-port")]
     pub p2p_port: Option<u16>,
     /// Secret key for generate auth token
-    #[structopt(short = "j", long = "jwt-secret", default_value = "needchange")]
+    #[structopt(short = "j", long = "jwt-secret")]
     pub jwt_secret: String,
-    /// Blockchain network type.
-    #[structopt(long = "network")]
+    /// Blockchain network type
+    #[structopt(long = "network", default_value = "moonbase")]
     pub network: String,
-    /// Blockchain network endpoint.
-    #[structopt(long = "network-endpoint")]
+    /// Blockchain network endpoint
+    #[structopt(
+        long = "network-endpoint",
+        default_value = "https://moonbeam-alpha.api.onfinality.io/public"
+    )]
     pub network_endpoint: String,
     /// Redis client address
     #[structopt(long = "redis-endpoint", default_value = "redis://127.0.0.1/")]
     pub redis_endpoint: String,
+    /// Bootstrap seeds for p2p network with MultiAddr style
+    #[structopt(long = "bootstrap")]
+    pub bootstrap: Vec<String>,
 }
 
 impl CommandLineArgs {
@@ -159,5 +165,9 @@ impl CommandLineArgs {
 
     pub fn redis_endpoint(&self) -> &str {
         &self.redis_endpoint
+    }
+
+    pub fn bootstrap(&self) -> Vec<String> {
+        self.bootstrap.clone()
     }
 }

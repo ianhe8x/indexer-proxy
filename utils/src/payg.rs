@@ -19,7 +19,7 @@
 //! Pay-As-You-Go with state channel helper functions.
 
 use ethers::{
-    abi::{encode, Tokenizable},
+    abi::{encode, Token, Tokenizable},
     signers::Signer,
     types::{Address, Signature, H256, U256},
     utils::keccak256,
@@ -92,7 +92,7 @@ impl OpenState {
             self.total.into_token(),
             self.expiration.into_token(),
             self.deployment_id.into_token(),
-            self.callback.clone().into_token(),
+            Token::Bytes(self.callback.clone()),
         ]);
         let hash = keccak256(payload);
         let indexer = self.indexer_sign.recover(&hash[..])?;
@@ -108,7 +108,7 @@ impl OpenState {
             self.total.into_token(),
             self.expiration.into_token(),
             self.deployment_id.into_token(),
-            self.callback.clone().into_token(),
+            Token::Bytes(self.callback.clone()),
         ]);
         let hash = keccak256(payload);
         let sign = key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)?;
@@ -293,6 +293,25 @@ impl QueryState {
             "consumerSign": convert_sign_to_string(&self.consumer_sign),
         })
     }
+}
+
+pub async fn fund_sign(
+    channel: U256,
+    indexer: Address,
+    consumer: Address,
+    amount: U256,
+    callback: Vec<u8>,
+    key: &impl Signer,
+) -> Result<Signature, Error> {
+    let payload = encode(&[
+        channel.into_token(),
+        indexer.into_token(),
+        consumer.into_token(),
+        amount.into_token(),
+        callback.into_token(),
+    ]);
+    let hash = keccak256(payload);
+    key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)
 }
 
 pub fn default_sign() -> Signature {

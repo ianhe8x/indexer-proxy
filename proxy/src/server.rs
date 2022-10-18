@@ -80,6 +80,10 @@ pub async fn start_server(host: &str, port: u16) {
 
 pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>, Error> {
     get_project(&payload.deployment_id)?;
+    let indexer = account::get_indexer().await;
+    if indexer.to_lowercase() != payload.indexer.to_lowercase() {
+        return Err(Error::JWTTokenCreationError);
+    }
 
     let signer = match (&payload.consumer, &payload.agreement) {
         (Some(consumer), Some(agreement)) => recover_consumer_token_payload(

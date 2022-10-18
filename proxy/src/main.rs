@@ -57,6 +57,7 @@ async fn main() {
         let channel = p2p::listen().await;
         let p2p_bind = COMMAND.p2p();
         info!("P2P bind: {}", p2p_bind);
+        let seeds = COMMAND.bootstrap();
 
         let key_path = std::path::PathBuf::from("indexer.key"); // DEBUG TODO
         let key = if key_path.exists() {
@@ -73,6 +74,19 @@ async fn main() {
             p2p_server::<p2p::IndexerP2p>(p2p_bind, None, None, Some(channel), None, key)
                 .await
                 .unwrap();
+        });
+
+        // init bootstrap seeds
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            for seed in seeds {
+                p2p::send(subql_utils::request::jsonrpc_params(
+                    0,
+                    "connect",
+                    vec![serde_json::json!(seed)],
+                ))
+                .await
+            }
         });
     }
 

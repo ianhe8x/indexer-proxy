@@ -10,37 +10,40 @@
 ### Start `proxy server`
 
 - `cargo build`
-- `./target/debug/indexer-proxy --secret-key your-key --service-url http://127.0.0.1:8000 --network moonbase --network-endpoint https://moonbeam-alpha.api.onfinality.io/public`
+- `./target/debug/indexer-proxy --secret-key your-key-same-with-coordinator --jwt_secret randomkey`
 
 ### Output help menu
 
 ```sh
 ./target/debug/indexer-proxy --help
-Indexer Proxy 0.1.0
+Indexer Proxy 0.3.0
 Command line for starting indexer proxy server
 
 USAGE:
-    subql-proxy [FLAGS] [OPTIONS] --secret-key <secret-key> --service-url <service-url> --network <network> --network-endpoint <network-endpoint>
+    subql-proxy [FLAGS] [OPTIONS] --jwt-secret <jwt-secret> --secret-key <secret-key>
 
 FLAGS:
-    -a, --auth         enable auth
-    -d, --debug        enable debug mode
-        --dev          enable dev mode
-    -h, --help         Prints help information
-    -e, --p2p-relay    Check if running as relay
-    -V, --version      Prints version information
+    -a, --auth       Enable auth
+    -d, --debug      Enable debug mode
+        --dev        Enable dev mode
+    -h, --help       Prints help information
+    -V, --version    Prints version information
 
 OPTIONS:
-        --endpoint <endpoint>                Endpoint of this service [default: http://localhost:8003]
-        --host <host>                        IP address for the server [default: 127.0.0.1]
-    -r, --p2p-rpc <p2p-rpc>                  Rpc binding socket address [default: 127.0.0.1:7001]
-    -w, --p2p-ws <p2p-ws>                    Rpc binding socket address
-    -p, --port <port>                        Port the service will listen on [default: 8003]
-        --secret-key <secret-key>            Secret key for generating auth token
-        --service-url <service-url>          Coordinator service endpoint
-        --token-duration <token-duration>    auth token duration [default: 12]
-        --network <network>                 Blockchain network type.
-        --network-endpoint <network-endpoint> Blockchain network endpoint.
+        --bootstrap <bootstrap>...               Bootstrap seeds for p2p network with MultiAddr style
+        --endpoint <endpoint>                    Endpoint of this service [default: http://127.0.0.1:80]
+        --host <host>                            IP address for the server [default: 127.0.0.1]
+    -j, --jwt-secret <jwt-secret>                Secret key for generate auth token
+        --network <network>                      Blockchain network type [default: moonbase]
+        --network-endpoint <network-endpoint>
+            Blockchain network endpoint [default: https://moonbeam-alpha.api.onfinality.io/public]
+
+        --p2p-port <p2p-port>                    port of p2p network
+    -p, --port <port>                            Port the service will listen on [default: 80]
+        --redis-endpoint <redis-endpoint>        Redis client address [default: redis://127.0.0.1/]
+        --secret-key <secret-key>                Secret key for decrypt key
+        --service-url <service-url>              Coordinator service endpoint [default: http://127.0.0.1:8000]
+        --token-duration <token-duration>        Auth token duration hours [default: 12]
 ```
 
 ## APIs

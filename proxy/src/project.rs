@@ -56,9 +56,9 @@ pub fn add_project(
         if !is_had {
             let params = vec![json!(&deployment_id)];
             tokio::spawn(async move {
-                // waiting 10s for init network
+                // waiting 15s for init network
                 if is_init {
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
                 }
                 debug!("p2p group join: {:?}", params);
 
