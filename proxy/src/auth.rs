@@ -82,7 +82,6 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<Strin
 
     if let Some(agreement) = payload.agreement {
         // Add the limit to cache.
-        let minute_rate = rate * 60; // because rate is express in seconds
         let daily_limit = format!("{}-dlimit", agreement);
         let rate_limit = format!("{}-rlimit", agreement);
 
@@ -93,7 +92,7 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<Strin
         let conn = redis();
         let mut conn_lock = conn.lock().await;
         let _: RedisResult<()> = conn_lock.set_ex(&daily_limit, daily, limit_expired).await;
-        let _: RedisResult<()> = conn_lock.set_ex(&rate_limit, minute_rate, limit_expired).await;
+        let _: RedisResult<()> = conn_lock.set_ex(&rate_limit, rate, limit_expired).await;
         drop(conn_lock);
     }
 
