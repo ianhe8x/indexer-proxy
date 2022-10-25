@@ -35,7 +35,7 @@ use subql_utils::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::auth::{create_jwt, AuthQuery, Payload};
+use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::contracts::check_agreement_and_consumer;
 use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::get_project;
@@ -59,6 +59,8 @@ pub async fn start_server(host: &str, port: u16) {
         .route("/token", post(generate_token))
         // `POST /query/123` goes to query with agreement.
         .route("/query/:id", post(query_handler))
+        // `GET /query-limit` get the query limit times with agreement.
+        .route("/query-limit", get(query_limit_handler))
         // `POST /open` goes to open a state channel for payg.
         .route("/open", post(generate_payg))
         // `POST /payg/123` goes to query with Pay-As-You-Go with state channel.
@@ -140,6 +142,17 @@ pub async fn query_handler(
 
     let response = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(response))
+}
+
+pub async fn query_limit_handler(
+    AuthQueryLimit(daily_limit, daily_used, rate_limit, rate_used): AuthQueryLimit,
+) -> Result<Json<Value>, Error> {
+    Ok(Json(json!({
+        "daily_limit": daily_limit,
+        "daily_used": daily_used,
+        "rate_limit": rate_limit,
+        "rate_used": rate_used,
+    })))
 }
 
 pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Error> {

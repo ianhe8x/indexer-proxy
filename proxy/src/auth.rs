@@ -184,3 +184,66 @@ where
         Ok(AuthQuery(decoded.claims.deployment_id))
     }
 }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct AuthQueryLimit(pub u64, pub u64, pub u64, pub u64);
+
+#[async_trait]
+impl<B> FromRequest<B> for AuthQueryLimit
+where
+    B: Send,
+{
+    type Rejection = Error;
+
+    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+        // Get authorisation header
+        let authorisation = req
+            .headers()
+            .get(AUTHORIZATION)
+            .ok_or(Error::NoPermissionError)?
+            .to_str()
+            .map_err(|_| Error::NoPermissionError)?;
+
+        // Check that is bearer and jwt
+        let split = authorisation.split_once(' ');
+        let jwt = match split {
+            Some((name, contents)) if name == "Bearer" => Ok(contents),
+            _ => Err(Error::InvalidAuthHeaderError),
+        }?;
+
+        let decoded = decode::<Claims>(
+            jwt,
+            &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
+            &Validation::new(Algorithm::HS512),
+        )
+        .map_err(|_| Error::JWTTokenError)?;
+
+        if decoded.claims.exp < Utc::now().timestamp_millis() {
+            return Err(Error::JWTTokenExpiredError);
+        }
+
+        if let Some(agreement) = decoded.claims.agreement {
+            // check limit
+            let daily_key = format!("{}-daily", agreement);
+            let rate_key = format!("{}-rate", agreement);
+            let daily_limit = format!("{}-dlimit", agreement);
+            let rate_limit = format!("{}-rlimit", agreement);
+
+            let conn = redis();
+            let mut conn_lock = conn.lock().await;
+
+            let daily_limit: u64 = conn_lock.get(&daily_limit).await.unwrap_or(86400);
+            let rate_limit: u64 = conn_lock.get(&rate_limit).await.unwrap_or(60);
+
+            let daily_times: RedisResult<u64> = conn_lock.get(&daily_key).await;
+            let rate_times: RedisResult<u64> = conn_lock.get(&rate_key).await;
+            drop(conn_lock);
+            let daily_times = daily_times.unwrap_or(0);
+            let rate_times = rate_times.unwrap_or(0);
+
+            Ok(AuthQueryLimit(daily_limit, daily_times, rate_limit, rate_times))
+        } else {
+            Ok(AuthQueryLimit(1, 0, 1, 0))
+        }
+    }
+}
