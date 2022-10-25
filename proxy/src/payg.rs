@@ -34,7 +34,7 @@ use subql_utils::{
 
 use crate::account::ACCOUNT;
 use crate::cli::COMMAND;
-use crate::p2p::PEER;
+use crate::p2p::{PEER, PEERADDR};
 use crate::project::{get_project, list_projects};
 
 pub async fn merket_price(project_id: Option<String>) -> Value {
@@ -65,6 +65,7 @@ pub async fn merket_price(project_id: Option<String>) -> Value {
     json!({
         "endpoint": COMMAND.endpoint(),
         "peer": peer_str,
+        "multiaddr": PEERADDR.get().map(|a| a.to_string()).unwrap_or("".to_owned()),
         "indexer": format!("{:?}", account.indexer),
         "controller": format!("{:?}", account.controller.address()),
         "deployments": projects,

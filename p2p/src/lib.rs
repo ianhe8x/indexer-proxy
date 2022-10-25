@@ -28,8 +28,9 @@ pub mod primitives;
 pub mod rpc;
 pub mod server;
 
-pub use libp2p; // re-export
-pub use libp2p::PeerId;
+pub use libp2p;
+// re-export
+pub use libp2p::{Multiaddr, PeerId};
 
 pub use behaviour::{
     group::GroupId,
@@ -41,10 +42,21 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait P2pHandler {
+    /// Handle the public address
+    async fn address(addr: Multiaddr);
+
+    /// Handle PAYG event
     async fn channel_handle(state: &str) -> Response;
 
     /// If group is set, get specific group information, otherwise all information.
     async fn info_handle(group: Option<GroupId>) -> String;
 
-    async fn event() {}
+    /// Handle peer join in a group (deployment)
+    async fn group_join(peer: PeerId, group: GroupId) -> Option<Request>;
+
+    /// Handle peer leave in a group (deployment)
+    async fn group_leave(peer: PeerId, group: GroupId);
+
+    /// Handle other events
+    async fn event();
 }

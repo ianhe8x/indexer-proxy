@@ -62,7 +62,6 @@ pub fn add_project(
                 }
                 debug!("p2p group join: {:?}", params);
 
-                #[cfg(feature = "p2p")]
                 crate::p2p::send(jsonrpc_params(0, "group-join", params)).await
             });
         }

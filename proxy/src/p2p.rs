@@ -21,7 +21,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use serde_json::{json, Value};
 use subql_p2p::{
     rpc::{channel_rpc_channel, helper::RpcParam, ChannelAddr, ChannelRpcSender},
-    GroupId, P2pHandler, PeerId, Response,
+    GroupId, Multiaddr, P2pHandler, PeerId, Request, Response,
 };
 use tokio::sync::{mpsc::Receiver, RwLock};
 
@@ -49,6 +49,7 @@ async fn handle_channel(mut out_recv: Receiver<RpcParam>) {
 }
 
 pub static PEER: Lazy<RwLock<PeerId>> = Lazy::new(|| RwLock::new(PeerId::random()));
+pub static PEERADDR: OnceCell<Multiaddr> = OnceCell::new();
 
 pub async fn update_peer(peer: PeerId) {
     let mut key = PEER.write().await;
@@ -60,6 +61,11 @@ pub struct IndexerP2p;
 
 #[async_trait]
 impl P2pHandler for IndexerP2p {
+    async fn address(addr: Multiaddr) {
+        debug!("PUBLIC ADDRESS: {}", addr);
+        let _ = PEERADDR.set(addr);
+    }
+
     async fn channel_handle(info: &str) -> Response {
         channel_handle(info).await
     }
@@ -71,7 +77,16 @@ impl P2pHandler for IndexerP2p {
     }
 
     async fn event() {
-        todo!()
+        debug!("handle event");
+    }
+
+    async fn group_join(peer: PeerId, group: GroupId) -> Option<Request> {
+        debug!("Peer:{} join group: {}", peer, group);
+        None
+    }
+
+    async fn group_leave(peer: PeerId, group: GroupId) {
+        debug!("Peer:{} leave group: {}", peer, group);
     }
 }
 

@@ -20,12 +20,17 @@ use futures::StreamExt;
 use libp2p::{
     core::either::EitherError,
     identity::Keypair,
+    multiaddr::Protocol,
     ping::Failure,
     swarm::{handler::ConnectionHandlerUpgrErr, Swarm, SwarmBuilder, SwarmEvent},
     Multiaddr, PeerId,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, net::SocketAddr};
+use std::{
+    collections::HashMap,
+    error::Error,
+    net::{Ipv4Addr, SocketAddr},
+};
 use tokio::{
     select,
     sync::mpsc::{Receiver, Sender},
@@ -52,6 +57,17 @@ pub enum GroupType {
 #[derive(Serialize, Deserialize)]
 pub enum DeploymentEvent {
     PriceRequest(RequestId),
+}
+
+fn is_global(ip: Ipv4Addr) -> bool {
+    let private = ip.is_unspecified()
+        || ip.is_private()
+        || ip.is_loopback()
+        || ip.is_link_local()
+        || ip.is_documentation()
+        || ip.is_broadcast();
+
+    !private
 }
 
 pub async fn server<T: P2pHandler>(
@@ -104,6 +120,22 @@ pub async fn server<T: P2pHandler>(
             FutureResult::P2p(event) => match event {
                 SwarmEvent::NewListenAddr { address, .. } => {
                     debug!("P2P Listening on {:?}", address);
+                    let components = address.iter().collect::<Vec<_>>();
+                    match components[0] {
+                        Protocol::Ip4(ip) => {
+                            if is_global(ip) {
+                                T::address(address).await
+                            }
+                        }
+                        Protocol::Ip6(ip) => {
+                            if let Some(ip) = ip.to_ipv4() {
+                                if is_global(ip) {
+                                    T::address(address).await;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 SwarmEvent::Behaviour(event) => match event {
                     NetworkEvent::Rpc(msg) => match msg {
@@ -193,11 +225,15 @@ pub async fn server<T: P2pHandler>(
                                     }
                                 }
                             }
-                            GroupEvent::Join { peer: _, group: _ } => {
+                            GroupEvent::Join { peer, group } => {
                                 // handle peer join.
+                                if let Some(req) = T::group_join(peer, group).await {
+                                    swarm.behaviour_mut().rpc.request(peer, req);
+                                }
                             }
-                            GroupEvent::Leave { peer: _, group: _ } => {
+                            GroupEvent::Leave { peer, group } => {
                                 // handle per leave.
+                                T::group_join(peer, group).await;
                             }
                         }
                     }
