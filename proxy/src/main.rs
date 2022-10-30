@@ -28,6 +28,7 @@ mod payg;
 mod project;
 mod prometheus;
 mod server;
+mod subscriber;
 
 #[cfg(feature = "p2p")]
 mod p2p;
@@ -47,10 +48,11 @@ async fn main() {
     let log_filter = if debug { Level::DEBUG } else { Level::INFO };
     tracing_subscriber::fmt().with_max_level(log_filter).init();
 
-    let _ = account::fetch_account_metadata().await.unwrap(); // no panic for first start.
+    account::init_account().await;
     project::init_projects().await;
+    payg::init_channels().await;
 
-    project::subscribe();
+    subscriber::subscribe();
 
     #[cfg(feature = "p2p")]
     {

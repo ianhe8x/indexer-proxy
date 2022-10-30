@@ -23,19 +23,121 @@ use axum::{
     extract::{FromRequest, RequestParts},
     http::header::AUTHORIZATION,
 };
-use ethers::{signers::Signer, types::U256};
+use chrono::prelude::*;
+use ethers::{
+    signers::Signer,
+    types::{Address, U256},
+};
+use redis::{AsyncCommands, RedisResult};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use subql_utils::{
     error::Error,
     payg::{convert_sign_to_string, OpenState, QueryState},
     request::graphql_request,
     tools::deployment_cid,
+    types::Result,
 };
 
 use crate::account::ACCOUNT;
-use crate::cli::COMMAND;
+use crate::cli::{redis, COMMAND};
+use crate::contracts::check_state_channel_consumer;
 use crate::p2p::{PEER, PEERADDR};
 use crate::project::{get_project, list_projects};
+
+struct StateCache {
+    price: U256,
+    total: U256,
+    spent: U256,
+    remote: U256,
+    coordi: U256,
+    signer: ConsumerType,
+}
+
+impl StateCache {
+    fn from_bytes(bytes: &[u8]) -> StateCache {
+        let price = U256::from_little_endian(&bytes[0..32]);
+        let total = U256::from_little_endian(&bytes[32..64]);
+        let spent = U256::from_little_endian(&bytes[64..96]);
+        let remote = U256::from_little_endian(&bytes[96..128]);
+        let coordi = U256::from_little_endian(&bytes[128..160]);
+        let signer = ConsumerType::from_bytes(&bytes[160..]);
+        StateCache {
+            price,
+            total,
+            spent,
+            remote,
+            coordi,
+            signer,
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+        self.price.to_little_endian(&mut bytes);
+        self.total.to_little_endian(&mut bytes);
+        self.spent.to_little_endian(&mut bytes);
+        self.remote.to_little_endian(&mut bytes);
+        self.coordi.to_little_endian(&mut bytes);
+        bytes.extend(&self.signer.to_bytes());
+        bytes
+    }
+}
+
+/// Supported consumer type.
+pub enum ConsumerType {
+    /// real account
+    Account(Address),
+    /// use consumer host service. Contract Signer and real account
+    Host(Vec<Address>),
+}
+
+impl ConsumerType {
+    fn contains(&self, s: &Address) -> bool {
+        match self {
+            ConsumerType::Account(a) => a == s,
+            ConsumerType::Host(signers) => signers.contains(s),
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> ConsumerType {
+        match bytes[0] {
+            1 => {
+                let num = bytes[1] as usize;
+                let mut signers = vec![];
+                let a_bytes = &bytes[2..];
+                for i in 0..num {
+                    signers.push(Address::from_slice(&a_bytes[20 * i..20 * (i + 1)]));
+                }
+                ConsumerType::Host(signers)
+            }
+            _ => {
+                let a = Address::from_slice(&bytes[1..21]);
+                ConsumerType::Account(a)
+            }
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![];
+        match self {
+            ConsumerType::Account(a) => {
+                bytes[0] = 0;
+                bytes.extend(a.as_bytes());
+            }
+            ConsumerType::Host(signers) => {
+                // MAX only store 256 signers
+                bytes[0] = 1;
+                let num = if signers.len() > 255 { 255 } else { signers.len() };
+                bytes[1] = num as u8;
+                for i in 0..num {
+                    bytes.extend(signers[i].as_bytes());
+                }
+            }
+        }
+        bytes
+    }
+}
 
 pub async fn merket_price(project_id: Option<String>) -> Value {
     let account = ACCOUNT.read().await;
@@ -72,14 +174,14 @@ pub async fn merket_price(project_id: Option<String>) -> Value {
     })
 }
 
-pub async fn open_state(body: &Value) -> Result<Value, Error> {
+pub async fn open_state(body: &Value) -> Result<Value> {
     let mut state = OpenState::from_json(body)?;
 
     // check project is exists. unify the deployment id store style.
     let project_id = deployment_cid(&state.deployment_id);
     if let Ok(project) = get_project(&project_id) {
         // check project price.
-        if project.payg_price != state.price {
+        if project.payg_price > state.price {
             return Err(Error::InvalidProjectPrice);
         }
         // check project expiration
@@ -91,14 +193,19 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
     }
 
     let account = ACCOUNT.read().await;
+    let indexer = account.indexer;
     state.sign(&account.controller, false).await?;
     drop(account);
 
     let (sindexer, sconsumer) = state.recover()?;
     debug!("Open signer: {:?}, {:?}", sindexer, sconsumer);
 
-    let url = COMMAND.graphql_url();
+    // check indexer is own
+    if indexer != sindexer {
+        return Err(Error::InvalidRequest);
+    }
 
+    // async to coordinator
     let mdata = format!(
         r#"mutation {{
              channelOpen(
@@ -106,11 +213,7 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
                indexer:"{:?}",
                consumer:"{:?}",
                total:"{}",
-               expiration:{},
                deploymentId:"{}",
-               callback:"0x{}",
-               lastIndexerSign:"0x{}",
-               lastConsumerSign:"0x{}",
                price:"{}")
            {{ price }}
         }}"#,
@@ -118,43 +221,65 @@ pub async fn open_state(body: &Value) -> Result<Value, Error> {
         state.indexer,
         state.consumer,
         state.total,
-        state.expiration,
         deployment_cid(&state.deployment_id),
-        hex::encode(&state.callback),
-        convert_sign_to_string(&state.indexer_sign),
-        convert_sign_to_string(&state.consumer_sign),
         state.price,
     );
-
-    let query = json!({ "query": mdata });
-    let result = graphql_request(&url, &query)
-        .await
-        .map_err(|_| Error::ServiceException)?;
-    let price: U256 = result
-        .get("data")
-        .ok_or(Error::ServiceException)?
-        .get("channelOpen")
-        .ok_or(Error::ServiceException)?
-        .get("price")
-        .ok_or(Error::ServiceException)?
-        .as_str()
-        .ok_or(Error::ServiceException)?
-        .parse()
-        .map_err(|_| Error::ServiceException)?;
-    state.price = price;
+    tokio::spawn(async move {
+        let url = COMMAND.graphql_url();
+        let query = json!({ "query": mdata });
+        let _ = graphql_request(&url, &query).await.map_err(|e| error!("{:?}", e));
+    });
 
     Ok(state.to_json())
 }
 
-pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value), Error> {
+pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value)> {
     let project = get_project(project)?;
     let mut state = QueryState::from_json(state)?;
 
     let account = ACCOUNT.read().await;
     state.sign(&account.controller, false).await?;
     drop(account);
-    let (_, _signer) = state.recover()?;
-    // TODO more verify the signer
+    let (_, signer) = state.recover()?;
+
+    // check channel state
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+    let mut keyname = [0u8; 32];
+    state.channel_id.to_little_endian(&mut keyname);
+    let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
+    drop(conn_lock);
+    if cache_bytes.is_err() {
+        return Err(Error::Expired);
+    }
+    let mut state_cache = StateCache::from_bytes(&cache_bytes.unwrap());
+
+    // check signer
+    if !state_cache.signer.contains(&signer) {
+        return Err(Error::InvalidSignature);
+    }
+
+    let total = state_cache.total;
+    let price = state_cache.price;
+    let local_prev = state_cache.spent;
+    let remote_prev = state_cache.remote;
+    let remote_next = state.spent;
+    let conflict = project.payg_overflow;
+
+    if remote_prev < remote_next && remote_prev + price > remote_next {
+        // price invalid
+        return Err(Error::InvalidProjectPrice);
+    }
+
+    if local_prev > remote_prev + price * conflict {
+        // overflow the conflict
+        return Err(Error::PaygConflict);
+    }
+
+    if remote_next >= total + price {
+        // overflow the total
+        return Err(Error::Expired);
+    }
 
     // query the data.
     let data = match graphql_request(&project.query_endpoint, query).await {
@@ -169,8 +294,23 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
         Err(_e) => Err(Error::ServiceException),
     }?;
 
-    // query the state.
-    let url = COMMAND.graphql_url();
+    state_cache.spent = local_prev + remote_next - remote_prev;
+    state_cache.remote = remote_next;
+
+    let mut conn_lock = conn.lock().await;
+    if state.is_final {
+        // close
+        let _: RedisResult<()> = conn_lock.del(&keyname).await;
+    } else {
+        // update, missing KEEPTTL, so use two operation.
+        let exp: RedisResult<usize> = conn_lock.ttl(&keyname).await;
+        let _: RedisResult<()> = conn_lock
+            .set_ex(&keyname, state_cache.to_bytes(), exp.unwrap_or(86400))
+            .await;
+    }
+    drop(conn_lock);
+
+    // async to coordiantor
     let mdata = format!(
         r#"mutation {{
              channelUpdate(
@@ -182,30 +322,101 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
            {{ id, spent }}
         }}"#,
         state.channel_id,
-        state.spent,
+        remote_next,
         state.is_final,
         convert_sign_to_string(&state.indexer_sign),
         convert_sign_to_string(&state.consumer_sign),
     );
+    tokio::spawn(async move {
+        // query the state.
+        let url = COMMAND.graphql_url();
+        let query = json!({ "query": mdata });
+        let _ = graphql_request(&url, &query).await.map_err(|e| error!("{:?}", e));
+    });
 
-    let query = json!({ "query": mdata });
-    let result = graphql_request(&url, &query)
-        .await
-        .map_err(|_| Error::ServiceException)?;
-    let spent: U256 = result
-        .get("data")
-        .ok_or(Error::PaygConflict)?
-        .get("channelUpdate")
-        .ok_or(Error::PaygConflict)?
-        .get("spent")
-        .ok_or(Error::PaygConflict)?
-        .as_str()
-        .ok_or(Error::PaygConflict)?
-        .parse()
-        .map_err(|_| Error::PaygConflict)?;
-    state.remote = spent;
-
+    state.remote = state_cache.spent;
     Ok((state.to_json(), data))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ChannelItem {
+    pub id: String,
+    pub consumer: String,
+    pub total: String,
+    pub spent: String,
+    pub remote: String,
+    pub price: String,
+    #[serde(rename = "expiredAt")]
+    pub expired: i64,
+    #[serde(rename = "lastFinal")]
+    pub is_final: bool,
+}
+
+pub async fn handle_channel(value: &Value) -> Result<()> {
+    let channel: ChannelItem = serde_json::from_str(value.to_string().as_str()).unwrap();
+
+    let channel_id: U256 = channel.id.parse().map_err(|_e| Error::InvalidSerialize)?;
+    let consumer: Address = channel.consumer.parse().map_err(|_e| Error::InvalidSerialize)?;
+    let total = U256::from_dec_str(&channel.total).map_err(|_e| Error::InvalidSerialize)?;
+    let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::InvalidSerialize)?;
+    let remote = U256::from_dec_str(&channel.remote).map_err(|_e| Error::InvalidSerialize)?;
+    let price = U256::from_dec_str(&channel.price).map_err(|_e| Error::InvalidSerialize)?;
+    let mut keyname = [0u8; 32];
+    channel_id.to_little_endian(&mut keyname);
+
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+
+    let now = Utc::now().timestamp();
+
+    if channel.is_final || now > channel.expired {
+        // delete from cache
+        let _: RedisResult<()> = conn_lock.del(&keyname).await;
+    } else {
+        let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
+        let state_cache = if let Ok(bytes) = cache_bytes {
+            let mut state_cache = StateCache::from_bytes(&bytes);
+            state_cache.total = total;
+            state_cache.remote = std::cmp::max(state_cache.remote, remote);
+
+            // spent = max(cache_spent - (cache_coordi - spent), spent)
+            let fixed = state_cache.spent - state_cache.coordi + spent;
+            state_cache.spent = std::cmp::max(fixed, spent);
+
+            state_cache
+        } else {
+            let signer = check_state_channel_consumer(channel_id, consumer).await?;
+            StateCache {
+                price,
+                total,
+                spent,
+                remote,
+                signer,
+                coordi: spent,
+            }
+        };
+
+        let exp = (now - channel.expired) as usize;
+        let _: RedisResult<()> = conn_lock.set_ex(&keyname, state_cache.to_bytes(), exp).await;
+    }
+
+    Ok(())
+}
+
+pub async fn init_channels() {
+    let url = COMMAND.graphql_url();
+    let query =
+        json!({ "query": "query { getAliveChannels { id total spent remote price lastFinal callback expiredAt } }" });
+    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
+    println!("==== DEBUG ==== : {}", value);
+
+    if let Some(items) = value.pointer("/data/getAliveChannels") {
+        if let Some(channels) = items.as_array() {
+            for channel in channels {
+                let _ = handle_channel(channel).await;
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

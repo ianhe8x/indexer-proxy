@@ -172,10 +172,6 @@ pub async fn payg_handler(
 
 pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
     let project = get_project(&id)?;
-
-    // TODO: move to other place
-    let _ = account::fetch_account_metadata().await;
-
     let query = json!({ "query": METADATA_QUERY });
     let response = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(response))

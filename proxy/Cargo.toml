@@ -10,10 +10,11 @@ p2p = ["subql-p2p"]
 [dependencies]
 subql-p2p = { version = "0.3",  path = "../p2p", optional = true }
 subql-utils = { version = "0.3",  path = "../utils" }
-subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "kepler-network" }
+subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "refactor-rust-sdk" }
 async-trait = "0.1"
 axum = "0.5"
 chrono = "0.4"
+ethers = "1.0"
 hex = "0.4"
 jsonwebtoken = "8.1"
 redis = { version = "0.21", features = ["tokio-comp"] }
@@ -31,4 +32,3 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.16"
 tower-http = { version = "0.3", features = ["cors"] }
 url = "2.2"
-ethers = "0.17"

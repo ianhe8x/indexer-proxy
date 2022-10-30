@@ -18,7 +18,6 @@
 
 use ethers::types::U256;
 use once_cell::sync::Lazy;
-use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -26,9 +25,8 @@ use std::sync::Mutex;
 use subql_utils::{
     error::Error,
     request::{graphql_request, jsonrpc_params},
+    types::Result,
 };
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::{connect, Message};
 
 use crate::cli::COMMAND;
 
@@ -39,6 +37,7 @@ pub struct Project {
     pub query_endpoint: String,
     pub payg_price: U256,
     pub payg_expiration: u64,
+    pub payg_overflow: U256,
 }
 
 pub fn add_project(
@@ -46,6 +45,7 @@ pub fn add_project(
     query_endpoint: String,
     payg_price: U256,
     payg_expiration: u64,
+    payg_overflow: U256,
     is_init: bool,
 ) {
     let mut map = PROJECTS.lock().unwrap();
@@ -73,11 +73,12 @@ pub fn add_project(
             query_endpoint,
             payg_price,
             payg_expiration,
+            payg_overflow,
         },
     );
 }
 
-pub fn get_project(key: &str) -> Result<Project, Error> {
+pub fn get_project(key: &str) -> Result<Project> {
     let map = PROJECTS.lock().unwrap();
     if let Some(url) = map.get(key) {
         Ok(url.clone())
@@ -97,91 +98,47 @@ pub fn list_projects() -> Vec<(String, U256, u64)> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ProjectsResponse {
-    #[serde(rename = "getAliveProjects")]
-    get_alive_projects: Vec<ProjectItem>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ProjectItem {
-    id: String,
+pub struct ProjectItem {
+    pub id: String,
     #[serde(rename = "queryEndpoint")]
-    query_endpoint: String,
+    pub query_endpoint: String,
     #[serde(rename = "paygPrice")]
-    payg_price: String,
+    pub payg_price: String,
     #[serde(rename = "paygExpiration")]
-    payg_expiration: u64,
+    pub payg_expiration: u64,
+    #[serde(rename = "paygOverflow")]
+    pub payg_overflow: u64,
 }
 
-pub async fn fetch_projects(url: &str, is_init: bool) {
-    // graphql query for getting alive projects
-    let query = json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration } }" });
-    let result = graphql_request(url, &query).await;
+pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
+    let item: ProjectItem = serde_json::from_str(value.to_string().as_str()).unwrap();
+    let payg_price = U256::from_dec_str(&item.payg_price).unwrap_or(U256::from(0));
+    let payg_overflow = item.payg_overflow.into();
+    add_project(
+        item.id,
+        item.query_endpoint,
+        payg_price,
+        item.payg_expiration,
+        payg_overflow,
+        is_init,
+    );
 
-    match result {
-        Ok(value) => {
-            if let Some(v_d) = value.pointer("/data") {
-                let v_str: String = serde_json::to_string(v_d).unwrap_or(String::from(""));
-                let v: ProjectsResponse = serde_json::from_str(v_str.as_str()).unwrap();
-                for item in v.get_alive_projects {
-                    let payg_price = U256::from_dec_str(&item.payg_price).unwrap_or(U256::from(0));
-                    add_project(item.id, item.query_endpoint, payg_price, item.payg_expiration, is_init);
-                }
-            }
-        }
-        Err(e) => error!("Init projects failed: {:?}", e),
-    };
+    Ok(())
 }
 
 pub async fn init_projects() {
+    // graphql query for getting alive projects
     let url = COMMAND.graphql_url();
-    fetch_projects(&url, true).await;
-    debug!("indexing projects: {:?}", PROJECTS.lock().unwrap());
+    let query =
+        json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
+    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
+    println!("==== DEBUG ==== : {}", value);
 
-    let url_clone = url.clone();
-    tokio::spawn(async move {
-        loop {
-            debug!("loop fetch projects");
-            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-            fetch_projects(&url_clone, false).await;
-        }
-    });
-}
-
-pub fn subscribe() {
-    tokio::spawn(async move {
-        subscribe_project_change(COMMAND.graphql_url()).await;
-    });
-}
-
-async fn subscribe_project_change(mut websocket_url: String) {
-    websocket_url.replace_range(0..4, "ws");
-
-    let mut request = websocket_url.into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Sec-WebSocket-Protocol", HeaderValue::from_str("graphql-ws").unwrap());
-    let (mut socket, _) = connect(request).unwrap();
-    info!("Connected to the websocket server");
-
-    let out_message = json!({
-        "type": "start",
-        "payload": {
-            "query": "subscription { projectChanged { id queryEndpoint paygPrice paygExpiration } }"
-        }
-    })
-    .to_string();
-    socket.write_message(Message::Text(out_message)).unwrap();
-    loop {
-        let incoming_msg = socket.read_message().expect("Error reading message");
-        let text = incoming_msg.to_text().unwrap();
-        println!("LOAD PROJECTS ========== {} ", text);
-        let value: Value = serde_json::from_str(text).unwrap();
-        if let Some(project) = value.pointer("/payload/data/projectChanged") {
-            let item: ProjectItem = serde_json::from_str(project.to_string().as_str()).unwrap();
-            let payg_price = U256::from_dec_str(&item.payg_price).unwrap_or(U256::from(0));
-            add_project(item.id, item.query_endpoint, payg_price, item.payg_expiration, false);
-            debug!("indexing projects: {:?}", PROJECTS.lock().unwrap());
+    if let Some(items) = value.pointer("/data/getAliveProjects") {
+        if let Some(projects) = items.as_array() {
+            for project in projects {
+                let _ = handle_project(project, true);
+            }
         }
     }
 }

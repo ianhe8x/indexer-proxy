@@ -21,7 +21,7 @@ use ethers::{
     types::Address,
 };
 use once_cell::sync::Lazy;
-use serde_json::json;
+use serde_json::{json, Value};
 use subql_utils::{error::Error, request::graphql_request, types::Result};
 use tokio::sync::RwLock;
 
@@ -46,14 +46,9 @@ impl Default for Account {
 
 pub static ACCOUNT: Lazy<RwLock<Account>> = Lazy::new(|| RwLock::new(Account::default()));
 
-pub async fn fetch_account_metadata() -> Result<()> {
-    let url = COMMAND.graphql_url();
-    let query = json!({"query": "query { accountMetadata { indexer controller } }" });
-    let result = graphql_request(&url, &query).await;
-    let value = result.map_err(|_e| Error::InvalidServiceEndpoint)?;
-
+pub async fn handle_account(value: &Value) -> Result<()> {
     let indexer: Address = value
-        .pointer("/data/accountMetadata/indexer")
+        .get("indexer")
         .ok_or(Error::InvalidServiceEndpoint)?
         .as_str()
         .unwrap_or("0x0000000000000000000000000000000000000000")
@@ -62,7 +57,7 @@ pub async fn fetch_account_metadata() -> Result<()> {
         .unwrap_or(Address::default());
 
     let fetch_controller = value
-        .pointer("/data/accountMetadata/controller")
+        .get("controller")
         .map(|sk| {
             let data = sk.as_str().unwrap_or("").trim();
             if data.len() > 0 {
@@ -96,6 +91,16 @@ pub async fn fetch_account_metadata() -> Result<()> {
     *account = new_account;
 
     Ok(())
+}
+
+pub async fn init_account() {
+    let url = COMMAND.graphql_url();
+    let query = json!({"query": "query { accountMetadata { indexer controller } }" });
+    let value = graphql_request(&url, &query).await.unwrap();
+
+    if let Some(value) = value.pointer("/data/accountMetadata") {
+        handle_account(value).await.unwrap(); // init need unwrap if has error.
+    }
 }
 
 pub async fn get_indexer() -> String {

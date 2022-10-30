@@ -46,6 +46,7 @@ pub enum Error {
     PaygConflict,
     DailyLimit,
     RateLimit,
+    Expired,
 }
 
 impl Error {
@@ -83,6 +84,7 @@ impl Error {
             Error::PaygConflict => (StatusCode::BAD_REQUEST, "PAYG conflict".to_owned()),
             Error::DailyLimit => (StatusCode::BAD_REQUEST, "exceed daily limit".to_owned()),
             Error::RateLimit => (StatusCode::BAD_REQUEST, "exceed rate limit".to_owned()),
+            Error::Expired => (StatusCode::BAD_REQUEST, "service expired".to_owned()),
         }
     }
 }
