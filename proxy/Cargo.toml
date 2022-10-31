@@ -10,7 +10,7 @@ p2p = ["subql-p2p"]
 [dependencies]
 subql-p2p = { version = "0.3",  path = "../p2p", optional = true }
 subql-utils = { version = "0.3",  path = "../utils" }
-subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "refactor-rust-sdk" }
+subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "kepler-network" }
 async-trait = "0.1"
 axum = "0.5"
 chrono = "0.4"
