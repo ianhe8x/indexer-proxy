@@ -201,7 +201,7 @@ pub async fn open_state(body: &Value) -> Result<Value> {
     debug!("Open signer: {:?}, {:?}", sindexer, sconsumer);
 
     // check indexer is own
-    if indexer != sindexer {
+    if indexer != state.indexer {
         return Err(Error::InvalidRequest);
     }
 
