@@ -56,6 +56,7 @@ impl OpenState {
         deployment_id: H256,
         callback: Vec<u8>,
         key: &impl Signer,
+        price: U256,
     ) -> Result<Self, Error> {
         let channel_id = if let Some(channel_id) = channel_id {
             channel_id
@@ -78,7 +79,7 @@ impl OpenState {
             callback,
             consumer_sign: default_sign(),
             indexer_sign: default_sign(),
-            price: U256::from(0u64),
+            price: price,
         };
         state.sign(key, true).await?;
         Ok(state)
@@ -106,6 +107,7 @@ impl OpenState {
             self.indexer.into_token(),
             self.consumer.into_token(),
             self.total.into_token(),
+            self.price.into_token(),
             self.expiration.into_token(),
             self.deployment_id.into_token(),
             Token::Bytes(self.callback.clone()),
