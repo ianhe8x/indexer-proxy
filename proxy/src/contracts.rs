@@ -108,13 +108,25 @@ pub async fn check_state_channel_consumer(channel: U256, consumer: Address) -> R
     if contract == consumer {
         let client = Provider::<Http>::try_from(COMMAND.network_endpoint()).map_err(|_| Error::ServiceException)?;
         let host = consumer_host(client, COMMAND.network()).map_err(|_| Error::ServiceException)?;
-        let signers: Vec<Address> = host
-            .method::<_, Vec<Address>>("validSigners", (channel,))
+        let token: Token = host
+            .method::<_, Token>("validSigners", (channel,))
             .map_err(|_| Error::ServiceException)?
             .call()
             .await
             .map_err(|_| Error::ServiceException)?;
-        Ok(ConsumerType::Host(signers))
+
+        if let Some(ts) = token.into_array() {
+            let mut signers: Vec<Address> = vec![];
+            for t in ts {
+                if let Some(address) = t.into_address() {
+                    signers.push(address);
+                }
+            }
+            if !signers.is_empty() {
+                return Ok(ConsumerType::Host(signers));
+            }
+        }
+        Err(Error::Expired)
     } else {
         Ok(ConsumerType::Account(consumer))
     }

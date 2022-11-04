@@ -48,6 +48,7 @@ async fn main() {
     let log_filter = if debug { Level::DEBUG } else { Level::INFO };
     tracing_subscriber::fmt().with_max_level(log_filter).init();
 
+    cli::init_redis().await;
     account::init_account().await;
     project::init_projects().await;
     payg::init_channels().await;
@@ -91,8 +92,6 @@ async fn main() {
             }
         });
     }
-
-    cli::init_redis().await;
 
     server::start_server(host, port).await;
 }

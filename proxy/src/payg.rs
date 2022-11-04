@@ -74,11 +74,17 @@ impl StateCache {
 
     fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
-        self.price.to_little_endian(&mut bytes);
-        self.total.to_little_endian(&mut bytes);
-        self.spent.to_little_endian(&mut bytes);
-        self.remote.to_little_endian(&mut bytes);
-        self.coordi.to_little_endian(&mut bytes);
+        let mut u256_bytes = [0u8; 32];
+        self.price.to_little_endian(&mut u256_bytes);
+        bytes.extend(&u256_bytes);
+        self.total.to_little_endian(&mut u256_bytes);
+        bytes.extend(&u256_bytes);
+        self.spent.to_little_endian(&mut u256_bytes);
+        bytes.extend(&u256_bytes);
+        self.remote.to_little_endian(&mut u256_bytes);
+        bytes.extend(&u256_bytes);
+        self.coordi.to_little_endian(&mut u256_bytes);
+        bytes.extend(&u256_bytes);
         bytes.extend(&self.signer.to_bytes());
         bytes
     }
@@ -122,14 +128,14 @@ impl ConsumerType {
         let mut bytes = vec![];
         match self {
             ConsumerType::Account(a) => {
-                bytes[0] = 0;
+                bytes.push(0);
                 bytes.extend(a.as_bytes());
             }
             ConsumerType::Host(signers) => {
                 // MAX only store 256 signers
-                bytes[0] = 1;
+                bytes.push(1);
                 let num = if signers.len() > 255 { 255 } else { signers.len() };
-                bytes[1] = num as u8;
+                bytes.push(num as u8);
                 for i in 0..num {
                     bytes.extend(signers[i].as_bytes());
                 }
@@ -230,10 +236,12 @@ pub async fn open_state(body: &Value) -> Result<Value> {
         let _ = graphql_request(&url, &query).await.map_err(|e| error!("{:?}", e));
     });
 
+    debug!("Handle open channel success");
     Ok(state.to_json())
 }
 
 pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value)> {
+    debug!("Got query channel");
     let project = get_project(project)?;
     let mut state = QueryState::from_json(state)?;
 
@@ -252,7 +260,11 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     if cache_bytes.is_err() {
         return Err(Error::Expired);
     }
-    let mut state_cache = StateCache::from_bytes(&cache_bytes.unwrap());
+    let cache_raw_bytes = cache_bytes.unwrap();
+    if cache_raw_bytes.is_empty() {
+        return Err(Error::Expired);
+    }
+    let mut state_cache = StateCache::from_bytes(&cache_raw_bytes);
 
     // check signer
     if !state_cache.signer.contains(&signer) {
@@ -287,7 +299,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
             let _string = serde_json::to_string(&result).unwrap(); // safe unwrap
 
             // let _sign = sign_message(string.as_bytes()); // TODO add to header
-            // TODO add state to header and request to coordiantor know the response.
+            // TODO add state to header and request to coordinator know the response.
 
             Ok(result)
         }
@@ -335,6 +347,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     });
 
     state.remote = state_cache.spent;
+    debug!("Handle query channel success");
     Ok((state.to_json(), data))
 }
 
@@ -353,9 +366,11 @@ pub struct ChannelItem {
 }
 
 pub async fn handle_channel(value: &Value) -> Result<()> {
+    debug!("handle channel change");
     let channel: ChannelItem = serde_json::from_str(value.to_string().as_str()).unwrap();
 
-    let channel_id: U256 = channel.id.parse().map_err(|_e| Error::InvalidSerialize)?;
+    // coordinator use bignumber to store channel id
+    let channel_id = U256::from_dec_str(&channel.id).map_err(|_e| Error::InvalidSerialize)?;
     let consumer: Address = channel.consumer.parse().map_err(|_e| Error::InvalidSerialize)?;
     let total = U256::from_dec_str(&channel.total).map_err(|_e| Error::InvalidSerialize)?;
     let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::InvalidSerialize)?;
@@ -374,7 +389,9 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
         let _: RedisResult<()> = conn_lock.del(&keyname).await;
     } else {
         let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
-        let state_cache = if let Ok(bytes) = cache_bytes {
+        let cache_ok = cache_bytes.ok().and_then(|v| if v.is_empty() { None } else { Some(v) });
+
+        let state_cache = if let Some(bytes) = cache_ok {
             let mut state_cache = StateCache::from_bytes(&bytes);
             state_cache.total = total;
             state_cache.remote = std::cmp::max(state_cache.remote, remote);
@@ -396,7 +413,7 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
             }
         };
 
-        let exp = (now - channel.expired) as usize;
+        let exp = (channel.expired - now) as usize;
         let _: RedisResult<()> = conn_lock.set_ex(&keyname, state_cache.to_bytes(), exp).await;
     }
 
@@ -406,9 +423,8 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 pub async fn init_channels() {
     let url = COMMAND.graphql_url();
     let query =
-        json!({ "query": "query { getAliveChannels { id total spent remote price lastFinal callback expiredAt } }" });
+        json!({ "query": "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }" });
     let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
-    println!("==== DEBUG ==== : {}", value);
 
     if let Some(items) = value.pointer("/data/getAliveChannels") {
         if let Some(channels) = items.as_array() {

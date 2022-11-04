@@ -64,7 +64,7 @@ async fn subscribe_project_change(mut websocket_url: String) {
         "type": "start",
         "payload": {
             "query": "subscription {
-                channelChanged { id total spent remote price lastFinal callback expiredAt }
+                channelChanged { id consumer total spent remote price lastFinal expiredAt }
             }"
         }
     })
