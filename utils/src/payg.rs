@@ -312,7 +312,7 @@ pub async fn fund_sign(
         indexer.into_token(),
         consumer.into_token(),
         amount.into_token(),
-        callback.into_token(),
+        Token::Bytes(callback),
     ]);
     let hash = keccak256(payload);
     key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)
