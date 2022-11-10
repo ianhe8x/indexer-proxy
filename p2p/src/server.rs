@@ -107,8 +107,17 @@ pub async fn server<T: P2pHandler>(
     let mut sync_requests: HashMap<RequestId, (u64, bool)> = HashMap::new();
     let mut groups: HashMap<GroupId, GroupType> = HashMap::new();
 
+    let mut seeds = vec![];
+    // 1 min to keep-alive
+    let mut interval_alive = tokio::time::interval(std::time::Duration::from_secs(60));
+
     loop {
         let res = select! {
+            v = async {
+                interval_alive.tick().await;
+                FutureResult::KeepAlive
+
+            } => v,
             v = async { out_recv.recv().await.map(FutureResult::Rpc) } => v.unwrap(),
             v = async {
                 let event = swarm.select_next_some().await;
@@ -250,6 +259,7 @@ pub async fn server<T: P2pHandler>(
                                     let _ = rpc_send.send(RpcMessage(uid, msg, is_ws)).await;
                                 }
                                 Event::Connect(addr) => {
+                                    seeds.push(addr.clone());
                                     let _ = swarm.dial(addr);
                                 }
                                 Event::Request(pid, req) => {
@@ -295,6 +305,12 @@ pub async fn server<T: P2pHandler>(
                     }
                 }
             }
+            FutureResult::KeepAlive => {
+                // reconnect to seeds
+                for seed in seeds.iter() {
+                    let _ = swarm.dial(seed.clone());
+                }
+            }
         }
     }
 }
@@ -304,6 +320,7 @@ type EitherErrorP2P = EitherError<EitherErrorType, ConnectionHandlerUpgrErr<std:
 enum FutureResult {
     Rpc(RpcMessage),
     P2p(SwarmEvent<NetworkEvent, EitherErrorP2P>),
+    KeepAlive,
 }
 
 pub enum Event {
