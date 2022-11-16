@@ -253,8 +253,9 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     // check channel state
     let conn = redis();
     let mut conn_lock = conn.lock().await;
-    let mut keyname = [0u8; 32];
-    state.channel_id.to_little_endian(&mut keyname);
+    let mut keybytes = [0u8; 32];
+    state.channel_id.to_little_endian(&mut keybytes);
+    let keyname = format!("{}-channel", hex::encode(&keybytes));
     let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
     drop(conn_lock);
     if cache_bytes.is_err() {
@@ -376,8 +377,10 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
     let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::InvalidSerialize)?;
     let remote = U256::from_dec_str(&channel.remote).map_err(|_e| Error::InvalidSerialize)?;
     let price = U256::from_dec_str(&channel.price).map_err(|_e| Error::InvalidSerialize)?;
-    let mut keyname = [0u8; 32];
-    channel_id.to_little_endian(&mut keyname);
+
+    let mut keybytes = [0u8; 32];
+    channel_id.to_little_endian(&mut keybytes);
+    let keyname = format!("{}-channel", hex::encode(&keybytes));
 
     let conn = redis();
     let mut conn_lock = conn.lock().await;

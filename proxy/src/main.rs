@@ -24,6 +24,7 @@ mod account;
 mod auth;
 mod cli;
 mod contracts;
+mod monitor;
 mod payg;
 mod project;
 mod prometheus;
@@ -93,5 +94,6 @@ async fn main() {
         });
     }
 
+    monitor::run();
     server::start_server(host, port).await;
 }

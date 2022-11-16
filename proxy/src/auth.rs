@@ -93,6 +93,7 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<Strin
         let mut conn_lock = conn.lock().await;
         let _: RedisResult<()> = conn_lock.set_ex(&daily_limit, daily, limit_expired).await;
         let _: RedisResult<()> = conn_lock.set_ex(&rate_limit, rate, limit_expired).await;
+
         drop(conn_lock);
     }
 
