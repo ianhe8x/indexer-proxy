@@ -25,6 +25,7 @@ use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use redis::{AsyncCommands, RedisResult};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use subql_utils::{error::Error, types::Result};
 
 use crate::cli::{redis, COMMAND};
@@ -61,7 +62,7 @@ struct Claims {
     pub exp: i64,
 }
 
-pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<String> {
+pub async fn create_jwt(payload: Payload, daily: u64, rate: u64, free: Option<SocketAddr>) -> Result<String> {
     let expiration = Utc::now()
         .checked_add_signed(chrono::Duration::hours(COMMAND.token_duration()))
         .expect("valid timestamp")
@@ -72,7 +73,7 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<Strin
     }
 
     let header = Header::new(Algorithm::HS512);
-    let claims = Claims {
+    let mut claims = Claims {
         indexer: payload.indexer,
         agreement: payload.agreement.clone(),
         deployment_id: payload.deployment_id,
@@ -80,7 +81,11 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64) -> Result<Strin
         exp: expiration,
     };
 
-    if let Some(agreement) = payload.agreement {
+    if let Some(addr) = free {
+        claims.agreement = Some(format!("{}", addr.ip()));
+    }
+
+    if let Some(agreement) = &claims.agreement {
         // Add the limit to cache.
         let daily_limit = format!("{}-dlimit", agreement);
         let rate_limit = format!("{}-rlimit", agreement);

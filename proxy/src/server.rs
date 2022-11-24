@@ -18,7 +18,7 @@
 
 #![deny(warnings)]
 use axum::{
-    extract::Path,
+    extract::{ConnectInfo, Path},
     http::Method,
     routing::{get, post},
     Json, Router,
@@ -77,10 +77,16 @@ pub async fn start_server(host: &str, port: u16) {
     let ip_address: Ipv4Addr = host.parse().unwrap_or(Ipv4Addr::LOCALHOST);
     let addr = SocketAddr::new(IpAddr::V4(ip_address), port);
     info!("HTTP server bind: {}", addr);
-    axum::Server::bind(&addr).serve(app.into_make_service()).await.unwrap();
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .unwrap();
 }
 
-pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>, Error> {
+pub async fn generate_token(
+    Json(payload): Json<Payload>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> Result<Json<Value>, Error> {
     get_project(&payload.deployment_id)?;
     let indexer = account::get_indexer().await;
     if indexer.to_lowercase() != payload.indexer.to_lowercase() {
@@ -106,21 +112,35 @@ pub async fn generate_token(Json(payload): Json<Payload>) -> Result<Json<Value>,
         )?,
     };
 
-    let (checked, daily, rate) = if signer == payload.indexer.to_lowercase() {
+    let (checked, daily, rate, free) = if signer == payload.indexer.to_lowercase() {
         // if signer is indexer itself, return the token
-        (true, 0, 0)
+        (true, 0, 0, None)
     } else {
         // if singer is consumer, check signer is consumer,
         // and check whether the agreement is expired and the it is consistent with
         // `indexer` and `consumer`
         match &payload.agreement {
-            Some(agreement) => check_agreement_and_consumer(&signer, agreement).await?,
-            _ => (false, 0, 0),
+            Some(agreement) => {
+                let (checked, daily, rate) = check_agreement_and_consumer(&signer, agreement).await?;
+                (checked, daily, rate, None)
+            }
+            _ => {
+                // fixed plan just for try and dispute usecase. 10/minutes
+                if let Some(consumer) = &payload.consumer {
+                    if signer == consumer.to_lowercase() {
+                        (true, COMMAND.free_limit, 10, Some(addr))
+                    } else {
+                        (false, 0, 0, None)
+                    }
+                } else {
+                    (false, 0, 0, None)
+                }
+            }
         }
     };
 
     if checked {
-        let token = create_jwt(payload, daily, rate).await?;
+        let token = create_jwt(payload, daily, rate, free).await?;
         Ok(Json(json!(QueryToken { token })))
     } else {
         Err(Error::JWTTokenCreationError)

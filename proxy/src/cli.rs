@@ -92,6 +92,9 @@ pub struct CommandLineArgs {
     /// Bootstrap seeds for p2p network with MultiAddr style
     #[structopt(long = "bootstrap")]
     pub bootstrap: Vec<String>,
+    /// Free query for consumer limit everyday
+    #[structopt(long = "free-plan", default_value = "60")]
+    pub free_limit: u64,
 }
 
 impl CommandLineArgs {
