@@ -30,6 +30,6 @@ sysinfo = "0.26"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.17"
+tokio-tungstenite = "0.18"
 tower-http = { version = "0.3", features = ["cors"] }
 url = "2.2"
