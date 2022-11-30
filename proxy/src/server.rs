@@ -84,8 +84,8 @@ pub async fn start_server(host: &str, port: u16) {
 }
 
 pub async fn generate_token(
-    Json(payload): Json<Payload>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(payload): Json<Payload>,
 ) -> Result<Json<Value>, Error> {
     get_project(&payload.deployment_id)?;
     let indexer = account::get_indexer().await;

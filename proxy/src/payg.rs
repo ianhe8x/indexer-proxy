@@ -20,8 +20,8 @@
 
 use axum::{
     async_trait,
-    extract::{FromRequest, RequestParts},
-    http::header::AUTHORIZATION,
+    extract::FromRequestParts,
+    http::{header::AUTHORIZATION, request::Parts},
 };
 use chrono::prelude::*;
 use ethers::{
@@ -442,16 +442,16 @@ pub async fn init_channels() {
 pub struct AuthPayg(pub Value);
 
 #[async_trait]
-impl<B> FromRequest<B> for AuthPayg
+impl<S> FromRequestParts<S> for AuthPayg
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = Error;
 
-    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
-            .headers()
+            .headers
             .get(AUTHORIZATION)
             .ok_or(Error::NoPermissionError)?
             .to_str()

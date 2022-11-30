@@ -18,8 +18,8 @@
 
 use axum::{
     async_trait,
-    extract::{FromRequest, RequestParts},
-    http::header::AUTHORIZATION,
+    extract::FromRequestParts,
+    http::{header::AUTHORIZATION, request::Parts},
 };
 use chrono::prelude::*;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -114,16 +114,16 @@ pub async fn create_jwt(payload: Payload, daily: u64, rate: u64, free: Option<So
 pub struct AuthQuery(pub String);
 
 #[async_trait]
-impl<B> FromRequest<B> for AuthQuery
+impl<S> FromRequestParts<S> for AuthQuery
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = Error;
 
-    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
-            .headers()
+            .headers
             .get(AUTHORIZATION)
             .ok_or(Error::NoPermissionError)?
             .to_str()
@@ -195,16 +195,16 @@ where
 pub struct AuthQueryLimit(pub u64, pub u64, pub u64, pub u64);
 
 #[async_trait]
-impl<B> FromRequest<B> for AuthQueryLimit
+impl<S> FromRequestParts<S> for AuthQueryLimit
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = Error;
 
-    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
-            .headers()
+            .headers
             .get(AUTHORIZATION)
             .ok_or(Error::NoPermissionError)?
             .to_str()

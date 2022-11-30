@@ -12,7 +12,7 @@ subql-p2p = { version = "0.3",  path = "../p2p", optional = true }
 subql-utils = { version = "0.3",  path = "../utils" }
 subql-contracts = { git = "https://github.com/subquery/network-contracts", branch = "kepler-network" }
 async-trait = "0.1"
-axum = "0.5"
+axum = "0.6"
 chrono = "0.4"
 ethers = "1.0"
 hex = "0.4"
