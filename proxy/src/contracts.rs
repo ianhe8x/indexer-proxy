@@ -108,25 +108,39 @@ pub async fn check_state_channel_consumer(channel: U256, consumer: Address) -> R
     if contract == consumer {
         let client = Provider::<Http>::try_from(COMMAND.network_endpoint()).map_err(|_| Error::ServiceException)?;
         let host = consumer_host(client, COMMAND.network()).map_err(|_| Error::ServiceException)?;
+
+        let mut signers: Vec<Address> = vec![];
+
+        let real_consumer: Address = host
+            .method::<_, Address>("channelConsumer", (channel,))
+            .map_err(|_| Error::ServiceException)?
+            .call()
+            .await
+            .map_err(|_| Error::ServiceException)?;
+        if !real_consumer.is_zero() {
+            signers.push(real_consumer);
+        }
+
         let token: Token = host
-            .method::<_, Token>("validSigners", (channel,))
+            .method::<_, Token>("getSigners", ())
             .map_err(|_| Error::ServiceException)?
             .call()
             .await
             .map_err(|_| Error::ServiceException)?;
 
         if let Some(ts) = token.into_array() {
-            let mut signers: Vec<Address> = vec![];
             for t in ts {
                 if let Some(address) = t.into_address() {
                     signers.push(address);
                 }
             }
-            if !signers.is_empty() {
-                return Ok(ConsumerType::Host(signers));
-            }
         }
-        Err(Error::Expired)
+
+        if !signers.is_empty() {
+            return Ok(ConsumerType::Host(signers));
+        } else {
+            Err(Error::Expired)
+        }
     } else {
         Ok(ConsumerType::Account(consumer))
     }
