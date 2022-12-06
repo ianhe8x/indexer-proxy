@@ -67,6 +67,7 @@ pub async fn start_server(host: &str, port: u16) {
         .route("/payg/:id", post(payg_handler))
         // `Get /metadata/123` goes to query the metadata (indexer, controller, payg-price).
         .route("/metadata/:id", get(metadata_handler))
+        .route("/healthy", get(healthy_handler))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -195,4 +196,9 @@ pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Err
     let query = json!({ "query": METADATA_QUERY });
     let response = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(response))
+}
+
+pub async fn healthy_handler() -> Result<Json<Value>, Error> {
+    let indexer = account::get_indexer().await;
+    Ok(Json(json!({ "indexer": indexer })))
 }
