@@ -62,7 +62,12 @@ struct Claims {
     pub exp: i64,
 }
 
-pub async fn create_jwt(payload: Payload, daily: u64, rate: u64, free: Option<SocketAddr>) -> Result<String> {
+pub async fn create_jwt(
+    payload: Payload,
+    daily: u64,
+    rate: u64,
+    free: Option<SocketAddr>,
+) -> Result<String> {
     let expiration = Utc::now()
         .checked_add_signed(chrono::Duration::hours(COMMAND.token_duration()))
         .expect("valid timestamp")
@@ -120,7 +125,10 @@ where
 {
     type Rejection = Error;
 
-    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
             .headers
@@ -201,7 +209,10 @@ where
 {
     type Rejection = Error;
 
-    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
             .headers
@@ -247,7 +258,12 @@ where
             let daily_times = daily_times.unwrap_or(0);
             let rate_times = rate_times.unwrap_or(0);
 
-            Ok(AuthQueryLimit(daily_limit, daily_times, rate_limit, rate_times))
+            Ok(AuthQueryLimit(
+                daily_limit,
+                daily_times,
+                rate_limit,
+                rate_times,
+            ))
         } else {
             Ok(AuthQueryLimit(1, 0, 1, 0))
         }

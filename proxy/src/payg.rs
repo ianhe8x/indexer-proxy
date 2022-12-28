@@ -42,7 +42,6 @@ use subql_utils::{
 use crate::account::ACCOUNT;
 use crate::cli::{redis, COMMAND};
 use crate::contracts::check_state_channel_consumer;
-use crate::p2p::{PEER, PEERADDR};
 use crate::project::{get_project, list_projects};
 
 struct StateCache {
@@ -76,15 +75,15 @@ impl StateCache {
         let mut bytes = vec![];
         let mut u256_bytes = [0u8; 32];
         self.price.to_little_endian(&mut u256_bytes);
-        bytes.extend(&u256_bytes);
+        bytes.extend(u256_bytes);
         self.total.to_little_endian(&mut u256_bytes);
-        bytes.extend(&u256_bytes);
+        bytes.extend(u256_bytes);
         self.spent.to_little_endian(&mut u256_bytes);
-        bytes.extend(&u256_bytes);
+        bytes.extend(u256_bytes);
         self.remote.to_little_endian(&mut u256_bytes);
-        bytes.extend(&u256_bytes);
+        bytes.extend(u256_bytes);
         self.coordi.to_little_endian(&mut u256_bytes);
-        bytes.extend(&u256_bytes);
+        bytes.extend(u256_bytes);
         bytes.extend(&self.signer.to_bytes());
         bytes
     }
@@ -134,10 +133,14 @@ impl ConsumerType {
             ConsumerType::Host(signers) => {
                 // MAX only store 256 signers
                 bytes.push(1);
-                let num = if signers.len() > 255 { 255 } else { signers.len() };
+                let num = if signers.len() > 255 {
+                    255
+                } else {
+                    signers.len()
+                };
                 bytes.push(num as u8);
-                for i in 0..num {
-                    bytes.extend(signers[i].as_bytes());
+                for signer in signers.iter().take(num) {
+                    bytes.extend(signer.as_bytes());
                 }
             }
         }
@@ -147,13 +150,16 @@ impl ConsumerType {
 
 pub async fn merket_price(project_id: Option<String>) -> Value {
     let account = ACCOUNT.read().await;
-    let peer_str = PEER.read().await.to_base58();
     let projects: Vec<(String, String, String)> = if let Some(pid) = project_id {
         if let Ok(project) = get_project(&pid) {
             if project.payg_price == U256::from(0) {
                 vec![]
             } else {
-                vec![(pid, project.payg_price.to_string(), project.payg_expiration.to_string())]
+                vec![(
+                    pid,
+                    project.payg_price.to_string(),
+                    project.payg_expiration.to_string(),
+                )]
             }
         } else {
             vec![]
@@ -172,8 +178,6 @@ pub async fn merket_price(project_id: Option<String>) -> Value {
     };
     json!({
         "endpoint": COMMAND.endpoint(),
-        "peer": peer_str,
-        "multiaddr": PEERADDR.get().map(|a| a.to_string()).unwrap_or("".to_owned()),
         "indexer": format!("{:?}", account.indexer),
         "controller": format!("{:?}", account.controller.address()),
         "deployments": projects,
@@ -233,15 +237,16 @@ pub async fn open_state(body: &Value) -> Result<Value> {
     tokio::spawn(async move {
         let url = COMMAND.graphql_url();
         let query = json!({ "query": mdata });
-        let _ = graphql_request(&url, &query).await.map_err(|e| error!("{:?}", e));
+        let _ = graphql_request(&url, &query)
+            .await
+            .map_err(|e| error!("{:?}", e));
     });
 
     debug!("Handle open channel success");
     Ok(state.to_json())
 }
 
-pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<(Value, Value)> {
-    debug!("Got query channel");
+pub async fn query_state(project: &str, query: &Value, state: &Value) -> Result<(Value, Value)> {
     let project = get_project(project)?;
     let mut state = QueryState::from_json(state)?;
 
@@ -255,7 +260,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
     let mut conn_lock = conn.lock().await;
     let mut keybytes = [0u8; 32];
     state.channel_id.to_little_endian(&mut keybytes);
-    let keyname = format!("{}-channel", hex::encode(&keybytes));
+    let keyname = format!("{}-channel", hex::encode(keybytes));
     let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
     drop(conn_lock);
     if cache_bytes.is_err() {
@@ -291,7 +296,7 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
 
     if remote_next >= total + price {
         // overflow the total
-        return Err(Error::Expired);
+        return Err(Error::Overflow);
     }
 
     // query the data.
@@ -304,7 +309,10 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
 
             Ok(result)
         }
-        Err(_e) => Err(Error::ServiceException),
+        Err(e) => {
+            debug!("query error: {:?}", e);
+            Err(Error::InvalidRequest)
+        }
     }?;
 
     state_cache.spent = local_prev + remote_next - remote_prev;
@@ -344,12 +352,14 @@ pub async fn query_state(project: &str, state: &Value, query: &Value) -> Result<
         // query the state.
         let url = COMMAND.graphql_url();
         let query = json!({ "query": mdata });
-        let _ = graphql_request(&url, &query).await.map_err(|e| error!("{:?}", e));
+        let _ = graphql_request(&url, &query)
+            .await
+            .map_err(|e| error!("{:?}", e));
     });
 
     state.remote = state_cache.spent;
     debug!("Handle query channel success");
-    Ok((state.to_json(), data))
+    Ok((data, state.to_json()))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -372,7 +382,10 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 
     // coordinator use bignumber to store channel id
     let channel_id = U256::from_dec_str(&channel.id).map_err(|_e| Error::InvalidSerialize)?;
-    let consumer: Address = channel.consumer.parse().map_err(|_e| Error::InvalidSerialize)?;
+    let consumer: Address = channel
+        .consumer
+        .parse()
+        .map_err(|_e| Error::InvalidSerialize)?;
     let total = U256::from_dec_str(&channel.total).map_err(|_e| Error::InvalidSerialize)?;
     let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::InvalidSerialize)?;
     let remote = U256::from_dec_str(&channel.remote).map_err(|_e| Error::InvalidSerialize)?;
@@ -380,7 +393,7 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 
     let mut keybytes = [0u8; 32];
     channel_id.to_little_endian(&mut keybytes);
-    let keyname = format!("{}-channel", hex::encode(&keybytes));
+    let keyname = format!("{}-channel", hex::encode(keybytes));
 
     let conn = redis();
     let mut conn_lock = conn.lock().await;
@@ -392,7 +405,9 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
         let _: RedisResult<()> = conn_lock.del(&keyname).await;
     } else {
         let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
-        let cache_ok = cache_bytes.ok().and_then(|v| if v.is_empty() { None } else { Some(v) });
+        let cache_ok = cache_bytes
+            .ok()
+            .and_then(|v| if v.is_empty() { None } else { Some(v) });
 
         let state_cache = if let Some(bytes) = cache_ok {
             let mut state_cache = StateCache::from_bytes(&bytes);
@@ -417,7 +432,9 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
         };
 
         let exp = (channel.expired - now) as usize;
-        let _: RedisResult<()> = conn_lock.set_ex(&keyname, state_cache.to_bytes(), exp).await;
+        let _: RedisResult<()> = conn_lock
+            .set_ex(&keyname, state_cache.to_bytes(), exp)
+            .await;
     }
 
     Ok(())
@@ -425,8 +442,7 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 
 pub async fn init_channels() {
     let url = COMMAND.graphql_url();
-    let query =
-        json!({ "query": "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }" });
+    let query = json!({ "query": "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }" });
     let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
 
     if let Some(items) = value.pointer("/data/getAliveChannels") {
@@ -448,7 +464,10 @@ where
 {
     type Rejection = Error;
 
-    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        _state: &S,
+    ) -> std::result::Result<Self, Self::Rejection> {
         // Get authorisation header
         let authorisation = req
             .headers

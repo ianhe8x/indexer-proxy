@@ -122,7 +122,8 @@ pub async fn generate_token(
         // `indexer` and `consumer`
         match &payload.agreement {
             Some(agreement) => {
-                let (checked, daily, rate) = check_agreement_and_consumer(&signer, agreement).await?;
+                let (checked, daily, rate) =
+                    check_agreement_and_consumer(&signer, agreement).await?;
                 (checked, daily, rate, None)
             }
             _ => {
@@ -186,7 +187,7 @@ pub async fn payg_handler(
     Path(id): Path<String>,
     Json(query): Json<Value>,
 ) -> Result<Json<Value>, Error> {
-    let (state_data, query_data) = query_state(&id, &state, &query).await?;
+    let (query_data, state_data) = query_state(&id, &query, &state).await?;
     prometheus::push_query_metrics(id);
     Ok(Json(json!([query_data, state_data])))
 }

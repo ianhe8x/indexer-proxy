@@ -2,7 +2,6 @@
 members = [
  "utils",
  "proxy",
- "p2p",
 ]
 resolver = "2"
 

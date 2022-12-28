@@ -19,13 +19,13 @@
 use once_cell::sync::Lazy;
 use openssl::symm::{decrypt, Cipher};
 use redis::aio::Connection;
+use std::net::SocketAddr;
 use structopt::StructOpt;
 use subql_contracts::Network;
 use subql_utils::error::Error;
 use tokio::sync::{Mutex, OnceCell};
 
-#[cfg(feature = "p2p")]
-use subql_p2p::{libp2p::Multiaddr, primitives::DEFAULT_P2P_ADDR};
+const DEFAULT_P2P_ADDR: &str = "0.0.0.0:7370";
 
 pub static REDIS: OnceCell<Mutex<Connection>> = OnceCell::const_new();
 
@@ -36,13 +36,19 @@ pub fn redis<'a>() -> &'a Mutex<Connection> {
 pub async fn init_redis() {
     let client = redis::Client::open(COMMAND.redis_endpoint()).unwrap();
     let conn = Mutex::new(client.get_async_connection().await.unwrap());
-    REDIS.set(conn).map_err(|_e| "redis connection failure").unwrap();
+    REDIS
+        .set(conn)
+        .map_err(|_e| "redis connection failure")
+        .unwrap();
 }
 
 pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args);
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "Indexer Proxy", about = "Command line for starting indexer proxy server")]
+#[structopt(
+    name = "Indexer Proxy",
+    about = "Command line for starting indexer proxy server"
+)]
 pub struct CommandLineArgs {
     /// Endpoint of this service
     #[structopt(long = "endpoint", default_value = "http://127.0.0.1:80")]
@@ -118,8 +124,13 @@ impl CommandLineArgs {
         let iv = hex::decode(iv).map_err(|_| Error::InvalidEncrypt)?;
         let ctext = hex::decode(ciphertext).map_err(|_| Error::InvalidEncrypt)?;
 
-        let ptext = decrypt(Cipher::aes_256_ctr(), self.secret_key.as_bytes(), Some(&iv), &ctext)
-            .map_err(|_| Error::InvalidEncrypt)?;
+        let ptext = decrypt(
+            Cipher::aes_256_ctr(),
+            self.secret_key.as_bytes(),
+            Some(&iv),
+            &ctext,
+        )
+        .map_err(|_| Error::InvalidEncrypt)?;
 
         String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt)
     }
@@ -140,10 +151,9 @@ impl CommandLineArgs {
         self.token_duration
     }
 
-    #[cfg(feature = "p2p")]
-    pub fn p2p(&self) -> Multiaddr {
+    pub fn p2p(&self) -> SocketAddr {
         if let Some(port) = self.p2p_port {
-            format!("/ip4/0.0.0.0/tcp/{}", port).parse().unwrap()
+            format!("0.0.0.0:{}", port).parse().unwrap()
         } else {
             DEFAULT_P2P_ADDR.parse().unwrap()
         }

@@ -22,6 +22,7 @@
 pub mod constants;
 pub mod eip712;
 pub mod error;
+pub mod p2p;
 pub mod payg;
 pub mod query;
 pub mod request;

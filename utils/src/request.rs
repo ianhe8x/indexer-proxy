@@ -89,7 +89,9 @@ pub async fn proxy_request(
             req.header(AUTHORIZATION, token).send().await
         }
         _ => {
-            let mut req = REQUEST_CLIENT.post(url).header("content-type", "application/json");
+            let mut req = REQUEST_CLIENT
+                .post(url)
+                .header("content-type", "application/json");
             for (k, v) in headers {
                 req = req.header(k, v);
             }
@@ -159,7 +161,12 @@ pub fn jsonrpc_response(res: Result<Value, Error>) -> Result<Value, Value> {
 }
 
 // Request to jsonrpc service.(P2P http RPC)
-pub async fn jsonrpc_request(id: u64, url: &str, method: &str, params: Vec<Value>) -> Result<Value, Value> {
+pub async fn jsonrpc_request(
+    id: u64,
+    url: &str,
+    method: &str,
+    params: Vec<Value>,
+) -> Result<Value, Value> {
     let res = REQUEST_CLIENT
         .post(url)
         .header("content-type", "application/json")
@@ -170,7 +177,10 @@ pub async fn jsonrpc_request(id: u64, url: &str, method: &str, params: Vec<Value
 
     match res.error_for_status() {
         Ok(res) => {
-            let value = res.json::<Value>().await.map_err(|_e| Error::ServiceException);
+            let value = res
+                .json::<Value>()
+                .await
+                .map_err(|_e| Error::ServiceException);
             jsonrpc_response(value)
         }
         Err(err) => Err(json!(err.to_string())),

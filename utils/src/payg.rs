@@ -114,7 +114,10 @@ impl OpenState {
             Token::Bytes(self.callback.clone()),
         ]);
         let hash = keccak256(payload);
-        let sign = key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)?;
+        let sign = key
+            .sign_message(hash)
+            .await
+            .map_err(|_| Error::InvalidSignature)?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -143,18 +146,32 @@ impl OpenState {
             .map_err(|_e| Error::InvalidSerialize)?;
         let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
-        let expiration = U256::from_dec_str(params["expiration"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let deployment_id = cid_deployment(params["deploymentId"].as_str().ok_or(Error::InvalidSerialize)?);
+        let expiration = U256::from_dec_str(
+            params["expiration"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        )
+        .map_err(|_e| Error::InvalidSerialize)?;
+        let deployment_id = cid_deployment(
+            params["deploymentId"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        );
         if deployment_id == H256::zero() {
             return Err(Error::InvalidSerialize);
         }
         let callback = hex::decode(params["callback"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
-        let indexer_sign: Signature =
-            convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
-        let consumer_sign: Signature =
-            convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
+        let indexer_sign: Signature = convert_string_to_sign(
+            params["indexerSign"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        );
+        let consumer_sign: Signature = convert_string_to_sign(
+            params["consumerSign"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        );
 
         Ok(Self {
             channel_id,
@@ -239,7 +256,10 @@ impl QueryState {
             self.is_final.into_token(),
         ]);
         let hash = keccak256(payload);
-        let sign = key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)?;
+        let sign = key
+            .sign_message(hash)
+            .await
+            .map_err(|_| Error::InvalidSignature)?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -269,10 +289,16 @@ impl QueryState {
         let remote = U256::from_dec_str(params["remote"].as_str().ok_or(Error::InvalidSerialize)?)
             .map_err(|_e| Error::InvalidSerialize)?;
         let is_final = params["isFinal"].as_bool().ok_or(Error::InvalidSerialize)?;
-        let indexer_sign: Signature =
-            convert_string_to_sign(params["indexerSign"].as_str().ok_or(Error::InvalidSerialize)?);
-        let consumer_sign: Signature =
-            convert_string_to_sign(params["consumerSign"].as_str().ok_or(Error::InvalidSerialize)?);
+        let indexer_sign: Signature = convert_string_to_sign(
+            params["indexerSign"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        );
+        let consumer_sign: Signature = convert_string_to_sign(
+            params["consumerSign"]
+                .as_str()
+                .ok_or(Error::InvalidSerialize)?,
+        );
         Ok(Self {
             channel_id,
             indexer,
@@ -315,7 +341,9 @@ pub async fn fund_sign(
         Token::Bytes(callback),
     ]);
     let hash = keccak256(payload);
-    key.sign_message(hash).await.map_err(|_| Error::InvalidSignature)
+    key.sign_message(hash)
+        .await
+        .map_err(|_| Error::InvalidSignature)
 }
 
 pub fn default_sign() -> Signature {
@@ -329,7 +357,7 @@ pub fn default_sign() -> Signature {
 /// Convert eth signature to string.
 pub fn convert_sign_to_string(sign: &Signature) -> String {
     let bytes = convert_sign_to_bytes(sign);
-    hex::encode(&bytes)
+    hex::encode(bytes)
 }
 
 /// Convert string to eth signature.

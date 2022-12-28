@@ -3,10 +3,7 @@ use subql_utils::request::REQUEST_CLIENT;
 use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use tokio::sync::{Mutex, OnceCell};
 
-use crate::{
-    cli::{redis, COMMAND},
-    p2p::{PEER, PEERADDR},
-};
+use crate::cli::{redis, COMMAND};
 
 static SYS: OnceCell<Mutex<System>> = OnceCell::const_new();
 
@@ -14,11 +11,9 @@ async fn init_sys() -> Mutex<System> {
     Mutex::new(System::new())
 }
 
-pub fn run() {
+pub fn listen() {
     tokio::spawn(async {
         tokio::time::sleep(std::time::Duration::from_secs(10)).await; // 10s
-        let pid = PEER.read().await.to_base58();
-        let addr = PEERADDR.get().map(|a| a.to_string()).unwrap_or("".to_owned());
 
         loop {
             let (p_cpu, t_mem, p_mem, t_disk, p_disk) = fetch_sysinfo().await;
@@ -44,8 +39,7 @@ pub fn run() {
                 "p_mem": p_mem,
                 "t_disk": t_disk,
                 "p_disk": p_disk,
-                "peer": pid,
-                "addr": addr,
+                "addr": &COMMAND.service_url,
                 "agreement": agreement,
                 "channel": channel,
             });

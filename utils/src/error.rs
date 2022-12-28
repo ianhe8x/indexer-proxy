@@ -47,6 +47,7 @@ pub enum Error {
     DailyLimit,
     RateLimit,
     Expired,
+    Overflow,
 }
 
 impl Error {
@@ -68,23 +69,37 @@ impl Error {
             ),
             Error::NoPermissionError => (StatusCode::UNAUTHORIZED, "permission deny".to_owned()),
             Error::ServiceException => (StatusCode::UNAUTHORIZED, "service exception".to_owned()),
-            Error::InvalidAuthHeaderError => (StatusCode::BAD_REQUEST, "invalid auth header".to_owned()),
+            Error::InvalidAuthHeaderError => {
+                (StatusCode::BAD_REQUEST, "invalid auth header".to_owned())
+            }
             Error::InvalidProjectId => (StatusCode::BAD_REQUEST, "invalid project id".to_owned()),
-            Error::InvalidProjectPrice => (StatusCode::BAD_REQUEST, "invalid project price".to_owned()),
-            Error::InvalidProjectExpiration => (StatusCode::BAD_REQUEST, "invalid project expiration".to_owned()),
+            Error::InvalidProjectPrice => {
+                (StatusCode::BAD_REQUEST, "invalid project price".to_owned())
+            }
+            Error::InvalidProjectExpiration => (
+                StatusCode::BAD_REQUEST,
+                "invalid project expiration".to_owned(),
+            ),
             Error::InvalidServiceEndpoint => (
                 StatusCode::BAD_REQUEST,
                 "invalid coordinator service endpoint".to_owned(),
             ),
-            Error::InvalidController => (StatusCode::BAD_REQUEST, "invalid or missing controller".to_owned()),
+            Error::InvalidController => (
+                StatusCode::BAD_REQUEST,
+                "invalid or missing controller".to_owned(),
+            ),
             Error::InvalidSerialize => (StatusCode::BAD_REQUEST, "invalid serialize".to_owned()),
             Error::InvalidSignature => (StatusCode::BAD_REQUEST, "invalid signature".to_owned()),
-            Error::InvalidEncrypt => (StatusCode::BAD_REQUEST, "invalid encrypt or decrypt".to_owned()),
+            Error::InvalidEncrypt => (
+                StatusCode::BAD_REQUEST,
+                "invalid encrypt or decrypt".to_owned(),
+            ),
             Error::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid request".to_owned()),
             Error::PaygConflict => (StatusCode::BAD_REQUEST, "PAYG conflict".to_owned()),
             Error::DailyLimit => (StatusCode::BAD_REQUEST, "exceed daily limit".to_owned()),
             Error::RateLimit => (StatusCode::BAD_REQUEST, "exceed rate limit".to_owned()),
             Error::Expired => (StatusCode::BAD_REQUEST, "service expired".to_owned()),
+            Error::Overflow => (StatusCode::BAD_REQUEST, "query overflow".to_owned()),
         }
     }
 }

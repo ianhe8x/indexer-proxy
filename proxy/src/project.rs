@@ -22,15 +22,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use subql_utils::{
-    error::Error,
-    request::{graphql_request, jsonrpc_params},
-    types::Result,
-};
+use subql_utils::{error::Error, request::graphql_request, types::Result};
+use tdn::types::group::hash_to_group_id;
 
 use crate::cli::COMMAND;
+use crate::p2p::send;
+use crate::payg::merket_price;
 
-pub static PROJECTS: Lazy<Mutex<HashMap<String, Project>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+pub static PROJECTS: Lazy<Mutex<HashMap<String, Project>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -50,25 +50,10 @@ pub fn add_project(
 ) {
     let mut map = PROJECTS.lock().unwrap();
 
-    #[cfg(feature = "p2p")]
-    {
-        let is_had = map.contains_key(&deployment_id);
-        if !is_had {
-            let params = vec![json!(&deployment_id)];
-            tokio::spawn(async move {
-                // waiting 15s for init network
-                if is_init {
-                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
-                }
-                debug!("p2p group join: {:?}", params);
-
-                crate::p2p::send(jsonrpc_params(0, "group-join", params)).await
-            });
-        }
-    }
+    let is_had = map.contains_key(&deployment_id);
 
     map.insert(
-        deployment_id,
+        deployment_id.clone(),
         Project {
             query_endpoint,
             payg_price,
@@ -76,6 +61,24 @@ pub fn add_project(
             payg_overflow,
         },
     );
+
+    if is_had {
+        let gid = hash_to_group_id(deployment_id.as_bytes());
+        tokio::spawn(async move {
+            let price = merket_price(Some(deployment_id.clone())).await;
+            let data = serde_json::to_string(&price).unwrap();
+            send("group-broadcast-payg", vec![json!(data)], gid).await
+        });
+    } else {
+        let params = vec![json!(&deployment_id)];
+        tokio::spawn(async move {
+            // waiting 10s for init network
+            if is_init {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            }
+            send("group-join", params, 0).await;
+        });
+    }
 }
 
 pub fn get_project(key: &str) -> Result<Project> {
@@ -92,7 +95,7 @@ pub fn list_projects() -> Vec<(String, U256, u64)> {
     let mut projects = vec![];
     let map = PROJECTS.lock().unwrap();
     for (k, v) in map.iter() {
-        projects.push((k.clone(), v.payg_price.clone(), v.payg_expiration.clone()));
+        projects.push((k.clone(), v.payg_price, v.payg_expiration));
     }
     projects
 }
@@ -129,8 +132,7 @@ pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
 pub async fn init_projects() {
     // graphql query for getting alive projects
     let url = COMMAND.graphql_url();
-    let query =
-        json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
+    let query = json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
     let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
     println!("==== DEBUG ==== : {}", value);
 

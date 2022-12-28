@@ -25,20 +25,15 @@ mod auth;
 mod cli;
 mod contracts;
 mod monitor;
+mod p2p;
 mod payg;
 mod project;
 mod prometheus;
 mod server;
 mod subscriber;
 
-#[cfg(feature = "p2p")]
-mod p2p;
-
 use cli::COMMAND;
 use tracing::Level;
-
-#[cfg(feature = "p2p")]
-use subql_p2p::{libp2p::identity::Keypair, server::server as p2p_server, PeerId};
 
 #[tokio::main]
 async fn main() {
@@ -55,45 +50,7 @@ async fn main() {
     payg::init_channels().await;
 
     subscriber::subscribe();
+    monitor::listen();
 
-    #[cfg(feature = "p2p")]
-    {
-        let channel = p2p::listen().await;
-        let p2p_bind = COMMAND.p2p();
-        info!("P2P bind: {}", p2p_bind);
-        let seeds = COMMAND.bootstrap();
-
-        let key_path = std::path::PathBuf::from("indexer.key"); // DEBUG TODO
-        let key = if key_path.exists() {
-            let key_bytes = tokio::fs::read(&key_path).await.unwrap_or(vec![]); // safe.
-            Keypair::from_protobuf_encoding(&key_bytes).unwrap()
-        } else {
-            let key = Keypair::generate_ed25519();
-            let _ = tokio::fs::write(key_path, key.to_protobuf_encoding().unwrap()).await;
-            key
-        };
-        let peer_id = PeerId::from(key.public());
-        p2p::update_peer(peer_id).await;
-        tokio::spawn(async move {
-            p2p_server::<p2p::IndexerP2p>(p2p_bind, None, None, Some(channel), None, key)
-                .await
-                .unwrap();
-        });
-
-        // init bootstrap seeds
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            for seed in seeds {
-                p2p::send(subql_utils::request::jsonrpc_params(
-                    0,
-                    "connect",
-                    vec![serde_json::json!(seed)],
-                ))
-                .await
-            }
-        });
-    }
-
-    monitor::run();
     server::start_server(host, port).await;
 }

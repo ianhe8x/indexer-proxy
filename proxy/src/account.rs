@@ -23,9 +23,11 @@ use ethers::{
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use subql_utils::{error::Error, request::graphql_request, types::Result};
+use tdn::prelude::PeerKey;
 use tokio::sync::RwLock;
 
 use crate::cli::COMMAND;
+use crate::p2p::{start_network, stop_network};
 
 pub struct Account {
     pub indexer: Address,
@@ -56,39 +58,69 @@ pub async fn handle_account(value: &Value) -> Result<()> {
         .parse()
         .unwrap_or(Address::default());
 
-    let fetch_controller = value
-        .get("controller")
-        .map(|sk| {
-            let data = sk.as_str().unwrap_or("").trim();
-            if data.len() > 0 {
-                Some(data)
-            } else {
-                None
-            }
-        })
-        .flatten();
+    let fetch_controller = value.get("controller").and_then(|sk| {
+        let data = sk.as_str().unwrap_or("").trim();
+        if !data.is_empty() {
+            Some(data)
+        } else {
+            None
+        }
+    });
 
-    let controller = if let Some(sk) = fetch_controller {
-        let sk_values = serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
+    let (controller, peer) = if let Some(sk) = fetch_controller {
+        let sk_values =
+            serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
         if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
             return Err(Error::InvalidController);
         }
         let sk = COMMAND.decrypt(
             sk_values["iv"].as_str().ok_or(Error::InvalidController)?,
-            sk_values["content"].as_str().ok_or(Error::InvalidController)?,
+            sk_values["content"]
+                .as_str()
+                .ok_or(Error::InvalidController)?,
         )?; // with 0x...
 
-        sk[2..].parse::<LocalWallet>().map_err(|_| Error::InvalidController)?
-    } else {
-        "0000000000000000000000000000000000000000000000000000000000000001"
+        let controller = sk[2..]
             .parse::<LocalWallet>()
-            .unwrap()
+            .map_err(|_| Error::InvalidController)?;
+        let peer =
+            PeerKey::from_db_bytes(&hex::decode(&sk[2..]).map_err(|_| Error::InvalidController)?)
+                .map_err(|_| Error::InvalidController)?;
+        (controller, Some(peer))
+    } else {
+        (
+            "0000000000000000000000000000000000000000000000000000000000000001"
+                .parse::<LocalWallet>()
+                .unwrap(),
+            None,
+        )
     };
-    info!("indexer: {:?}, controller: {:?}", indexer, controller.address());
+    let new_c = controller.address();
 
-    let new_account = Account { indexer, controller };
+    let new_account = Account {
+        indexer,
+        controller,
+    };
     let mut account = ACCOUNT.write().await;
+    let old_c = account.controller.address();
+    info!(
+        "Indexer: {:?}, new controller: {:?}, old controller: {:?}",
+        indexer,
+        new_c,
+        account.controller.address()
+    );
     *account = new_account;
+    drop(account);
+
+    if old_c != new_c {
+        if let Some(key) = peer {
+            info!("Need restart p2p network...");
+            tokio::spawn(async move {
+                stop_network().await;
+                start_network(key).await;
+            });
+        }
+    }
 
     Ok(())
 }

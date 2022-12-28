@@ -22,17 +22,25 @@ use ethers::{
     types::{Address, U256},
 };
 use std::time::{SystemTime, UNIX_EPOCH};
-use subql_contracts::{consumer_host, consumer_host_parse, plan_manager, service_agreement_registry};
+use subql_contracts::{
+    consumer_host, consumer_host_parse, plan_manager, service_agreement_registry,
+};
 use subql_utils::error::Error;
 
 use crate::cli::COMMAND;
 use crate::payg::ConsumerType;
 
-pub async fn check_agreement_and_consumer(signer: &str, aid: &str) -> Result<(bool, u64, u64), Error> {
-    let client = Provider::<Http>::try_from(COMMAND.network_endpoint()).map_err(|_| Error::ServiceException)?;
+pub async fn check_agreement_and_consumer(
+    signer: &str,
+    aid: &str,
+) -> Result<(bool, u64, u64), Error> {
+    let client = Provider::<Http>::try_from(COMMAND.network_endpoint())
+        .map_err(|_| Error::ServiceException)?;
 
-    let plan = plan_manager(client.clone(), COMMAND.network()).map_err(|_| Error::ServiceException)?;
-    let agreement = service_agreement_registry(client, COMMAND.network()).map_err(|_| Error::ServiceException)?;
+    let plan =
+        plan_manager(client.clone(), COMMAND.network()).map_err(|_| Error::ServiceException)?;
+    let agreement = service_agreement_registry(client, COMMAND.network())
+        .map_err(|_| Error::ServiceException)?;
     let agreement_id = U256::from_dec_str(aid).map_err(|_| Error::InvalidSerialize)?;
 
     let info: Token = agreement
@@ -51,10 +59,24 @@ pub async fn check_agreement_and_consumer(signer: &str, aid: &str) -> Result<(bo
     if infos.len() < 6 {
         return Err(Error::InvalidSerialize);
     }
-    let consumer = infos[0].clone().into_address().ok_or(Error::InvalidSerialize)?;
-    let start = infos[4].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
-    let period = infos[5].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
-    let template_id = infos[7].clone().into_uint().ok_or(Error::InvalidSerialize)?;
+    let consumer = infos[0]
+        .clone()
+        .into_address()
+        .ok_or(Error::InvalidSerialize)?;
+    let start = infos[4]
+        .clone()
+        .into_uint()
+        .ok_or(Error::InvalidSerialize)?
+        .as_u64();
+    let period = infos[5]
+        .clone()
+        .into_uint()
+        .ok_or(Error::InvalidSerialize)?
+        .as_u64();
+    let template_id = infos[7]
+        .clone()
+        .into_uint()
+        .ok_or(Error::InvalidSerialize)?;
     let chain_consumer = format!("{:?}", consumer).to_lowercase();
 
     let now = SystemTime::now()
@@ -92,8 +114,16 @@ pub async fn check_agreement_and_consumer(signer: &str, aid: &str) -> Result<(bo
         if infos.len() < 3 {
             return Err(Error::InvalidSerialize);
         }
-        let daily = infos[1].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
-        let rate = infos[2].clone().into_uint().ok_or(Error::InvalidSerialize)?.as_u64();
+        let daily = infos[1]
+            .clone()
+            .into_uint()
+            .ok_or(Error::InvalidSerialize)?
+            .as_u64();
+        let rate = infos[2]
+            .clone()
+            .into_uint()
+            .ok_or(Error::InvalidSerialize)?
+            .as_u64();
         (daily, rate)
     } else {
         (0, 0)
@@ -102,11 +132,16 @@ pub async fn check_agreement_and_consumer(signer: &str, aid: &str) -> Result<(bo
     Ok((checked, daily, rate))
 }
 
-pub async fn check_state_channel_consumer(channel: U256, consumer: Address) -> Result<ConsumerType, Error> {
-    let (_abi, contract) = consumer_host_parse(COMMAND.network()).map_err(|_| Error::ServiceException)?;
+pub async fn check_state_channel_consumer(
+    channel: U256,
+    consumer: Address,
+) -> Result<ConsumerType, Error> {
+    let (_abi, contract) =
+        consumer_host_parse(COMMAND.network()).map_err(|_| Error::ServiceException)?;
 
     if contract == consumer {
-        let client = Provider::<Http>::try_from(COMMAND.network_endpoint()).map_err(|_| Error::ServiceException)?;
+        let client = Provider::<Http>::try_from(COMMAND.network_endpoint())
+            .map_err(|_| Error::ServiceException)?;
         let host = consumer_host(client, COMMAND.network()).map_err(|_| Error::ServiceException)?;
 
         let mut signers: Vec<Address> = vec![];
@@ -137,7 +172,7 @@ pub async fn check_state_channel_consumer(channel: U256, consumer: Address) -> R
         }
 
         if !signers.is_empty() {
-            return Ok(ConsumerType::Host(signers));
+            Ok(ConsumerType::Host(signers))
         } else {
             Err(Error::Expired)
         }

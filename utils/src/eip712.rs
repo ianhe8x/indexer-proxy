@@ -87,8 +87,12 @@ pub fn recover_indexer_token_payload(
         },
         primary_type: "messageType".to_owned(),
     };
-    let msg = type_data.encode_eip712().map_err(|_| Error::InvalidSerialize)?;
-    let address = signature.recover(msg).map_err(|_| Error::InvalidSignature)?;
+    let msg = type_data
+        .encode_eip712()
+        .map_err(|_| Error::InvalidSerialize)?;
+    let address = signature
+        .recover(msg)
+        .map_err(|_| Error::InvalidSignature)?;
     Ok(format!("{:02x?}", address))
 }
 
@@ -161,7 +165,11 @@ pub fn recover_consumer_token_payload(
         },
         primary_type: "messageType".to_owned(),
     };
-    let msg = type_data.encode_eip712().map_err(|_| Error::InvalidSerialize)?;
-    let address = signature.recover(msg).map_err(|_| Error::InvalidSignature)?;
+    let msg = type_data
+        .encode_eip712()
+        .map_err(|_| Error::InvalidSerialize)?;
+    let address = signature
+        .recover(msg)
+        .map_err(|_| Error::InvalidSignature)?;
     Ok(format!("{:02x?}", address))
 }

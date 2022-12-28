@@ -16,10 +16,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use futures_util::{SinkExt, StreamExt};
 use reqwest::header::HeaderValue;
 use serde_json::{json, Value};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::{connect, Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, protocol::Message},
+};
 
 use crate::account::handle_account;
 use crate::cli::COMMAND;
@@ -36,10 +39,11 @@ async fn subscribe_project_change(mut websocket_url: String) {
     websocket_url.replace_range(0..4, "ws");
 
     let mut request = websocket_url.into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Sec-WebSocket-Protocol", HeaderValue::from_str("graphql-ws").unwrap());
-    let (mut socket, _) = connect(request).unwrap();
+    request.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        HeaderValue::from_str("graphql-ws").unwrap(),
+    );
+    let (mut socket, _) = connect_async(request).await.unwrap();
     info!("Connected to the websocket server");
 
     let account_message = json!({
@@ -69,18 +73,13 @@ async fn subscribe_project_change(mut websocket_url: String) {
         }
     })
     .to_string();
-    socket.write_message(Message::Text(account_message)).unwrap();
-    socket.write_message(Message::Text(project_message)).unwrap();
-    socket.write_message(Message::Text(payg_message)).unwrap();
+    socket.send(Message::Text(account_message)).await.unwrap();
+    socket.send(Message::Text(project_message)).await.unwrap();
+    socket.send(Message::Text(payg_message)).await.unwrap();
 
-    loop {
-        let incoming_msg = socket.read_message().expect("Error reading message");
-        let text = incoming_msg.to_text();
-        if text.is_err() {
-            warn!("incoming message error!");
-            continue;
-        }
-        let value = serde_json::from_str::<Value>(text.unwrap());
+    while let Some(Ok(message)) = socket.next().await {
+        let text = message.to_text().unwrap();
+        let value = serde_json::from_str::<Value>(text);
         if value.is_err() {
             warn!("incoming message invalid!");
             continue;
