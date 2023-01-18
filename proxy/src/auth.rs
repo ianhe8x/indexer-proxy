@@ -74,7 +74,7 @@ pub async fn create_jwt(
         .timestamp_millis();
 
     if (Utc::now().timestamp_millis() - payload.timestamp).abs() > 120000 {
-        return Err(Error::JWTTokenCreationError);
+        return Err(Error::AuthCreate(1000));
     }
 
     let header = Header::new(Algorithm::HS512);
@@ -112,7 +112,7 @@ pub async fn create_jwt(
         &claims,
         &EncodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
     )
-    .map_err(|_| Error::JWTTokenCreationError)
+    .map_err(|_| Error::AuthCreate(1003))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -133,15 +133,15 @@ where
         let authorisation = req
             .headers
             .get(AUTHORIZATION)
-            .ok_or(Error::NoPermissionError)?
+            .ok_or(Error::Permission(1020))?
             .to_str()
-            .map_err(|_| Error::NoPermissionError)?;
+            .map_err(|_| Error::Permission(1020))?;
 
         // Check that is bearer and jwt
         let split = authorisation.split_once(' ');
         let jwt = match split {
             Some((name, contents)) if name == "Bearer" => Ok(contents),
-            _ => Err(Error::InvalidAuthHeaderError),
+            _ => Err(Error::InvalidAuthHeader(1030)),
         }?;
 
         let decoded = decode::<Claims>(
@@ -149,10 +149,10 @@ where
             &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
             &Validation::new(Algorithm::HS512),
         )
-        .map_err(|_| Error::JWTTokenError)?;
+        .map_err(|_| Error::AuthVerify(1005))?;
 
         if decoded.claims.exp < Utc::now().timestamp_millis() {
-            return Err(Error::JWTTokenExpiredError);
+            return Err(Error::AuthExpired(1006));
         }
 
         if let Some(agreement) = decoded.claims.agreement {
@@ -173,7 +173,7 @@ where
 
             let daily_times = if let Ok(times) = daily_times {
                 if times > daily_limit {
-                    return Err(Error::DailyLimit);
+                    return Err(Error::DailyLimit(1051));
                 } else {
                     times + 1
                 }
@@ -182,7 +182,7 @@ where
             };
             let rate_times = if let Ok(times) = rate_times {
                 if times > rate_limit {
-                    return Err(Error::RateLimit);
+                    return Err(Error::RateLimit(1052));
                 } else {
                     times + 1
                 }
@@ -217,15 +217,15 @@ where
         let authorisation = req
             .headers
             .get(AUTHORIZATION)
-            .ok_or(Error::NoPermissionError)?
+            .ok_or(Error::Permission(1020))?
             .to_str()
-            .map_err(|_| Error::NoPermissionError)?;
+            .map_err(|_| Error::Permission(1020))?;
 
         // Check that is bearer and jwt
         let split = authorisation.split_once(' ');
         let jwt = match split {
             Some((name, contents)) if name == "Bearer" => Ok(contents),
-            _ => Err(Error::InvalidAuthHeaderError),
+            _ => Err(Error::InvalidAuthHeader(1030)),
         }?;
 
         let decoded = decode::<Claims>(
@@ -233,10 +233,10 @@ where
             &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
             &Validation::new(Algorithm::HS512),
         )
-        .map_err(|_| Error::JWTTokenError)?;
+        .map_err(|_| Error::AuthVerify(1005))?;
 
         if decoded.claims.exp < Utc::now().timestamp_millis() {
-            return Err(Error::JWTTokenExpiredError);
+            return Err(Error::AuthExpired(1006));
         }
 
         if let Some(agreement) = decoded.claims.agreement {

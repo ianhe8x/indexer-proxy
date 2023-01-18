@@ -189,17 +189,15 @@ pub async fn open_state(body: &Value) -> Result<Value> {
 
     // check project is exists. unify the deployment id store style.
     let project_id = deployment_cid(&state.deployment_id);
-    if let Ok(project) = get_project(&project_id) {
-        // check project price.
-        if project.payg_price > state.price {
-            return Err(Error::InvalidProjectPrice);
-        }
-        // check project expiration
-        if U256::from(project.payg_expiration) < state.expiration {
-            return Err(Error::InvalidProjectExpiration);
-        }
-    } else {
-        return Err(Error::InvalidProjectId);
+    let project = get_project(&project_id)?;
+
+    // check project price.
+    if project.payg_price > state.price {
+        return Err(Error::InvalidProjectPrice(1033));
+    }
+    // check project expiration
+    if U256::from(project.payg_expiration) < state.expiration {
+        return Err(Error::InvalidProjectExpiration(1035));
     }
 
     let account = ACCOUNT.read().await;
@@ -212,7 +210,7 @@ pub async fn open_state(body: &Value) -> Result<Value> {
 
     // check indexer is own
     if indexer != state.indexer {
-        return Err(Error::InvalidRequest);
+        return Err(Error::InvalidRequest(1045));
     }
 
     // async to coordinator
@@ -264,17 +262,17 @@ pub async fn query_state(project: &str, query: &Value, state: &Value) -> Result<
     let cache_bytes: RedisResult<Vec<u8>> = conn_lock.get(&keyname).await;
     drop(conn_lock);
     if cache_bytes.is_err() {
-        return Err(Error::Expired);
+        return Err(Error::ServiceException(1021));
     }
     let cache_raw_bytes = cache_bytes.unwrap();
     if cache_raw_bytes.is_empty() {
-        return Err(Error::Expired);
+        return Err(Error::Expired(1054));
     }
     let mut state_cache = StateCache::from_bytes(&cache_raw_bytes);
 
     // check signer
     if !state_cache.signer.contains(&signer) {
-        return Err(Error::InvalidSignature);
+        return Err(Error::InvalidSignature(1055));
     }
 
     let total = state_cache.total;
@@ -286,17 +284,17 @@ pub async fn query_state(project: &str, query: &Value, state: &Value) -> Result<
 
     if remote_prev < remote_next && remote_prev + price > remote_next {
         // price invalid
-        return Err(Error::InvalidProjectPrice);
+        return Err(Error::InvalidProjectPrice(1034));
     }
 
     if local_prev > remote_prev + price * conflict {
         // overflow the conflict
-        return Err(Error::PaygConflict);
+        return Err(Error::PaygConflict(1050));
     }
 
     if remote_next >= total + price {
         // overflow the total
-        return Err(Error::Overflow);
+        return Err(Error::Overflow(1056));
     }
 
     // query the data.
@@ -311,7 +309,7 @@ pub async fn query_state(project: &str, query: &Value, state: &Value) -> Result<
         }
         Err(e) => {
             debug!("query error: {:?}", e);
-            Err(Error::InvalidRequest)
+            Err(Error::InvalidRequest(1046))
         }
     }?;
 
@@ -381,15 +379,15 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
     let channel: ChannelItem = serde_json::from_str(value.to_string().as_str()).unwrap();
 
     // coordinator use bignumber to store channel id
-    let channel_id = U256::from_dec_str(&channel.id).map_err(|_e| Error::InvalidSerialize)?;
+    let channel_id = U256::from_dec_str(&channel.id).map_err(|_e| Error::Serialize(1120))?;
     let consumer: Address = channel
         .consumer
         .parse()
-        .map_err(|_e| Error::InvalidSerialize)?;
-    let total = U256::from_dec_str(&channel.total).map_err(|_e| Error::InvalidSerialize)?;
-    let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::InvalidSerialize)?;
-    let remote = U256::from_dec_str(&channel.remote).map_err(|_e| Error::InvalidSerialize)?;
-    let price = U256::from_dec_str(&channel.price).map_err(|_e| Error::InvalidSerialize)?;
+        .map_err(|_e| Error::Serialize(1121))?;
+    let total = U256::from_dec_str(&channel.total).map_err(|_e| Error::Serialize(1122))?;
+    let spent = U256::from_dec_str(&channel.spent).map_err(|_e| Error::Serialize(1123))?;
+    let remote = U256::from_dec_str(&channel.remote).map_err(|_e| Error::Serialize(1124))?;
+    let price = U256::from_dec_str(&channel.price).map_err(|_e| Error::Serialize(1125))?;
 
     let mut keybytes = [0u8; 32];
     channel_id.to_little_endian(&mut keybytes);
@@ -472,12 +470,12 @@ where
         let authorisation = req
             .headers
             .get(AUTHORIZATION)
-            .ok_or(Error::NoPermissionError)?
+            .ok_or(Error::Permission(1020))?
             .to_str()
-            .map_err(|_| Error::NoPermissionError)?;
+            .map_err(|_| Error::Permission(1020))?;
 
         serde_json::from_str::<Value>(authorisation)
             .map(AuthPayg)
-            .map_err(|_| Error::InvalidAuthHeaderError)
+            .map_err(|_| Error::InvalidAuthHeader(1031))
     }
 }

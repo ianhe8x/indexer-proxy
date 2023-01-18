@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 use crate::error::Error;
 
 pub fn recover_signer(message: String, sign_str: &str) -> Result<String, Error> {
-    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+    let signature: Signature = sign_str.parse().map_err(|_| Error::Serialize(1104))?;
     let address = signature.recover(message);
     Ok(format!("{:02x?}", address))
 }
@@ -73,7 +73,7 @@ pub fn recover_indexer_token_payload(
     message.insert("timestamp".to_owned(), timestamp.into());
     message.insert("deploymentId".to_owned(), deployment_id.into());
 
-    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+    let signature: Signature = sign_str.parse().map_err(|_| Error::Serialize(1104))?;
 
     let type_data = TypedData {
         types,
@@ -89,10 +89,10 @@ pub fn recover_indexer_token_payload(
     };
     let msg = type_data
         .encode_eip712()
-        .map_err(|_| Error::InvalidSerialize)?;
+        .map_err(|_| Error::Serialize(1105))?;
     let address = signature
         .recover(msg)
-        .map_err(|_| Error::InvalidSignature)?;
+        .map_err(|_| Error::InvalidSignature(1040))?;
     Ok(format!("{:02x?}", address))
 }
 
@@ -151,7 +151,7 @@ pub fn recover_consumer_token_payload(
     message.insert("timestamp".to_owned(), timestamp.into());
     message.insert("deploymentId".to_owned(), deployment_id.into());
 
-    let signature: Signature = sign_str.parse().map_err(|_| Error::InvalidSerialize)?;
+    let signature: Signature = sign_str.parse().map_err(|_| Error::Serialize(1104))?;
 
     let type_data = TypedData {
         types,
@@ -167,9 +167,9 @@ pub fn recover_consumer_token_payload(
     };
     let msg = type_data
         .encode_eip712()
-        .map_err(|_| Error::InvalidSerialize)?;
+        .map_err(|_| Error::Serialize(1105))?;
     let address = signature
         .recover(msg)
-        .map_err(|_| Error::InvalidSignature)?;
+        .map_err(|_| Error::InvalidSignature(1040))?;
     Ok(format!("{:02x?}", address))
 }

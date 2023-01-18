@@ -26,88 +26,86 @@ use serde_json::json;
 /// App error type.
 #[derive(Debug)]
 pub enum Error {
-    JWTTokenError,
-    JWTTokenCreationError,
-    JWTTokenExpiredError,
-    GraphQLQueryError(String),
-    GraphQLInternalError(String),
-    InvalidAuthHeaderError,
-    NoPermissionError,
-    ServiceException,
-    InvalidProjectId,
-    InvalidProjectPrice,
-    InvalidProjectExpiration,
-    InvalidServiceEndpoint,
-    InvalidController,
-    InvalidSerialize,
-    InvalidSignature,
-    InvalidEncrypt,
-    InvalidRequest,
-    PaygConflict,
-    DailyLimit,
-    RateLimit,
-    Expired,
-    Overflow,
+    AuthCreate(i32),
+    AuthVerify(i32),
+    AuthExpired(i32),
+
+    GraphQLQuery(i32, String),
+    GraphQLInternal(i32, String),
+
+    Permission(i32),
+    ServiceException(i32),
+
+    InvalidAuthHeader(i32),
+    InvalidProjectId(i32),
+    InvalidProjectPrice(i32),
+    InvalidProjectExpiration(i32),
+    InvalidServiceEndpoint(i32),
+    InvalidController(i32),
+    InvalidSignature(i32),
+    InvalidEncrypt(i32),
+    InvalidRequest(i32),
+
+    PaygConflict(i32),
+    DailyLimit(i32),
+    RateLimit(i32),
+    Expired(i32),
+    Overflow(i32),
+
+    Serialize(i32),
 }
 
 impl Error {
-    pub fn to_status_message(self) -> (StatusCode, String) {
+    pub fn to_status_message<'a>(self) -> (StatusCode, i32, &'a str) {
         match self {
-            Error::JWTTokenError => (StatusCode::UNAUTHORIZED, "invalid auth token".to_owned()),
-            Error::JWTTokenCreationError => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "invalid payload to create token".to_owned(),
-            ),
-            Error::JWTTokenExpiredError => (StatusCode::UNAUTHORIZED, "token expired".to_owned()),
-            Error::GraphQLQueryError(e) => (
+            Error::AuthCreate(c) => (StatusCode::UNAUTHORIZED, c, "Auth create failure"),
+            Error::AuthVerify(c) => (StatusCode::UNAUTHORIZED, c, "Auth invalid"),
+            Error::AuthExpired(c) => (StatusCode::UNAUTHORIZED, c, "Auth expired"),
+
+            Error::GraphQLQuery(c, e) => (
                 StatusCode::NOT_FOUND,
-                format!("GraphQL server error (query error): {}", e),
+                c,
+                Box::leak(format!("GraphQL query: {}", e).into_boxed_str()),
             ),
-            Error::GraphQLInternalError(e) => (
+            Error::GraphQLInternal(c, e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("GraphQL server error (internal error): {}", e),
+                c,
+                Box::leak(format!("GraphQL internal: {}", e).into_boxed_str()),
             ),
-            Error::NoPermissionError => (StatusCode::UNAUTHORIZED, "permission deny".to_owned()),
-            Error::ServiceException => (StatusCode::UNAUTHORIZED, "service exception".to_owned()),
-            Error::InvalidAuthHeaderError => {
-                (StatusCode::BAD_REQUEST, "invalid auth header".to_owned())
+            Error::Permission(c) => (StatusCode::UNAUTHORIZED, c, "Permission deny"),
+            Error::ServiceException(c) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, c, "Service exception")
             }
-            Error::InvalidProjectId => (StatusCode::BAD_REQUEST, "invalid project id".to_owned()),
-            Error::InvalidProjectPrice => {
-                (StatusCode::BAD_REQUEST, "invalid project price".to_owned())
+            Error::InvalidAuthHeader(c) => (StatusCode::BAD_REQUEST, c, "Invalid auth header"),
+            Error::InvalidProjectId(c) => (StatusCode::BAD_REQUEST, c, "Invalid project id"),
+            Error::InvalidProjectPrice(c) => (StatusCode::BAD_REQUEST, c, "Invalid project price"),
+            Error::InvalidProjectExpiration(c) => {
+                (StatusCode::BAD_REQUEST, c, "Invalid project expiration")
             }
-            Error::InvalidProjectExpiration => (
+            Error::InvalidServiceEndpoint(c) => (
                 StatusCode::BAD_REQUEST,
-                "invalid project expiration".to_owned(),
+                c,
+                "Invalid coordinator service endpoint",
             ),
-            Error::InvalidServiceEndpoint => (
-                StatusCode::BAD_REQUEST,
-                "invalid coordinator service endpoint".to_owned(),
-            ),
-            Error::InvalidController => (
-                StatusCode::BAD_REQUEST,
-                "invalid or missing controller".to_owned(),
-            ),
-            Error::InvalidSerialize => (StatusCode::BAD_REQUEST, "invalid serialize".to_owned()),
-            Error::InvalidSignature => (StatusCode::BAD_REQUEST, "invalid signature".to_owned()),
-            Error::InvalidEncrypt => (
-                StatusCode::BAD_REQUEST,
-                "invalid encrypt or decrypt".to_owned(),
-            ),
-            Error::InvalidRequest => (StatusCode::BAD_REQUEST, "invalid request".to_owned()),
-            Error::PaygConflict => (StatusCode::BAD_REQUEST, "PAYG conflict".to_owned()),
-            Error::DailyLimit => (StatusCode::BAD_REQUEST, "exceed daily limit".to_owned()),
-            Error::RateLimit => (StatusCode::BAD_REQUEST, "exceed rate limit".to_owned()),
-            Error::Expired => (StatusCode::BAD_REQUEST, "service expired".to_owned()),
-            Error::Overflow => (StatusCode::BAD_REQUEST, "query overflow".to_owned()),
+            Error::InvalidController(c) => (StatusCode::BAD_REQUEST, c, "Invalid controller"),
+            Error::InvalidSignature(c) => (StatusCode::BAD_REQUEST, c, "Invalid signature"),
+            Error::InvalidEncrypt(c) => (StatusCode::BAD_REQUEST, c, "Invalid encrypt or decrypt"),
+            Error::InvalidRequest(c) => (StatusCode::BAD_REQUEST, c, "Invalid request"),
+            Error::PaygConflict(c) => (StatusCode::BAD_REQUEST, c, "PAYG conflict"),
+            Error::DailyLimit(c) => (StatusCode::BAD_REQUEST, c, "Exceed daily limit"),
+            Error::RateLimit(c) => (StatusCode::BAD_REQUEST, c, "Exceed rate limit"),
+            Error::Expired(c) => (StatusCode::BAD_REQUEST, c, "Service expired"),
+            Error::Overflow(c) => (StatusCode::BAD_REQUEST, c, "Query overflow"),
+            Error::Serialize(c) => (StatusCode::BAD_REQUEST, c, "Invalid serialize"),
         }
     }
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let (status, error_message) = self.to_status_message();
+        let (status, code, error_message) = self.to_status_message();
         let body = Json(json!({
+            "code": code,
             "error": error_message,
         }));
         (status, body).into_response()
@@ -116,36 +114,36 @@ impl IntoResponse for Error {
 
 impl From<hex::FromHexError> for Error {
     fn from(_err: hex::FromHexError) -> Error {
-        Error::InvalidSerialize
+        Error::Serialize(1100)
     }
 }
 
 impl From<rustc_hex::FromHexError> for Error {
     fn from(_err: rustc_hex::FromHexError) -> Error {
-        Error::InvalidSerialize
+        Error::Serialize(1101)
     }
 }
 
 impl From<uint::FromHexError> for Error {
     fn from(_err: uint::FromHexError) -> Error {
-        Error::InvalidSerialize
+        Error::Serialize(1102)
     }
 }
 
 impl From<ethereum_types::FromDecStrErr> for Error {
     fn from(_err: ethereum_types::FromDecStrErr) -> Error {
-        Error::InvalidSerialize
+        Error::Serialize(1103)
     }
 }
 
 impl From<ethers::types::SignatureError> for Error {
     fn from(_err: ethers::types::SignatureError) -> Error {
-        Error::InvalidSignature
+        Error::InvalidSignature(1040)
     }
 }
 
 impl From<ethers::signers::WalletError> for Error {
     fn from(_err: ethers::signers::WalletError) -> Error {
-        Error::InvalidController
+        Error::InvalidController(1038)
     }
 }

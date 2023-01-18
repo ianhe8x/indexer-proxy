@@ -56,13 +56,13 @@ pub async fn graphql_request(uri: &str, query: &Value) -> Result<Value, Error> {
 
     let res = match response_result {
         Ok(res) => res,
-        Err(e) => return Err(Error::GraphQLQueryError(e.to_string())),
+        Err(e) => return Err(Error::GraphQLQuery(1010, e.to_string())),
     };
 
     let json_result = res.json().await;
     let json_data: Value = match json_result {
         Ok(res) => res,
-        Err(e) => return Err(Error::GraphQLInternalError(e.to_string())),
+        Err(e) => return Err(Error::GraphQLInternal(1011, e.to_string())),
     };
 
     Ok(json_data)
@@ -157,32 +157,5 @@ pub fn jsonrpc_response(res: Result<Value, Error>) -> Result<Value, Value> {
             }
         }
         Err(err) => Err(json!(err.to_status_message().1)),
-    }
-}
-
-// Request to jsonrpc service.(P2P http RPC)
-pub async fn jsonrpc_request(
-    id: u64,
-    url: &str,
-    method: &str,
-    params: Vec<Value>,
-) -> Result<Value, Value> {
-    let res = REQUEST_CLIENT
-        .post(url)
-        .header("content-type", "application/json")
-        .json(&jsonrpc_params(id, method, params))
-        .send()
-        .await
-        .unwrap();
-
-    match res.error_for_status() {
-        Ok(res) => {
-            let value = res
-                .json::<Value>()
-                .await
-                .map_err(|_e| Error::ServiceException);
-            jsonrpc_response(value)
-        }
-        Err(err) => Err(json!(err.to_string())),
     }
 }

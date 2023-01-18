@@ -91,7 +91,7 @@ pub async fn generate_token(
     get_project(&payload.deployment_id)?;
     let indexer = account::get_indexer().await;
     if indexer.to_lowercase() != payload.indexer.to_lowercase() {
-        return Err(Error::JWTTokenCreationError);
+        return Err(Error::AuthCreate(1002));
     }
 
     let signer = match (&payload.consumer, &payload.agreement) {
@@ -145,7 +145,7 @@ pub async fn generate_token(
         let token = create_jwt(payload, daily, rate, free).await?;
         Ok(Json(json!(QueryToken { token })))
     } else {
-        Err(Error::JWTTokenCreationError)
+        Err(Error::AuthCreate(1001))
     }
 }
 
@@ -155,7 +155,7 @@ pub async fn query_handler(
     Json(query): Json<Value>,
 ) -> Result<Json<Value>, Error> {
     if COMMAND.auth() && id != deployment_id {
-        return Err(Error::JWTTokenError);
+        return Err(Error::AuthVerify(1004));
     };
 
     let project = get_project(&id)?;

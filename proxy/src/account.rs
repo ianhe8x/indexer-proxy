@@ -51,7 +51,7 @@ pub static ACCOUNT: Lazy<RwLock<Account>> = Lazy::new(|| RwLock::new(Account::de
 pub async fn handle_account(value: &Value) -> Result<()> {
     let indexer: Address = value
         .get("indexer")
-        .ok_or(Error::InvalidServiceEndpoint)?
+        .ok_or(Error::InvalidServiceEndpoint(1036))?
         .as_str()
         .unwrap_or("0x0000000000000000000000000000000000000000")
         .trim()
@@ -68,24 +68,27 @@ pub async fn handle_account(value: &Value) -> Result<()> {
     });
 
     let (controller, peer) = if let Some(sk) = fetch_controller {
-        let sk_values =
-            serde_json::from_str::<serde_json::Value>(sk).map_err(|_e| Error::InvalidController)?;
+        let sk_values = serde_json::from_str::<serde_json::Value>(sk)
+            .map_err(|_e| Error::InvalidController(1037))?;
         if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
-            return Err(Error::InvalidController);
+            return Err(Error::InvalidController(1037));
         }
         let sk = COMMAND.decrypt(
-            sk_values["iv"].as_str().ok_or(Error::InvalidController)?,
+            sk_values["iv"]
+                .as_str()
+                .ok_or(Error::InvalidController(1037))?,
             sk_values["content"]
                 .as_str()
-                .ok_or(Error::InvalidController)?,
+                .ok_or(Error::InvalidController(1037))?,
         )?; // with 0x...
 
         let controller = sk[2..]
             .parse::<LocalWallet>()
-            .map_err(|_| Error::InvalidController)?;
-        let peer =
-            PeerKey::from_db_bytes(&hex::decode(&sk[2..]).map_err(|_| Error::InvalidController)?)
-                .map_err(|_| Error::InvalidController)?;
+            .map_err(|_| Error::InvalidController(1038))?;
+        let peer = PeerKey::from_db_bytes(
+            &hex::decode(&sk[2..]).map_err(|_| Error::InvalidController(1039))?,
+        )
+        .map_err(|_| Error::InvalidController(1039))?;
         (controller, Some(peer))
     } else {
         (

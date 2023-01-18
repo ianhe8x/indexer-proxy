@@ -86,7 +86,7 @@ pub fn get_project(key: &str) -> Result<Project> {
     if let Some(url) = map.get(key) {
         Ok(url.clone())
     } else {
-        Err(Error::InvalidProjectId)
+        Err(Error::InvalidProjectId(1032))
     }
 }
 

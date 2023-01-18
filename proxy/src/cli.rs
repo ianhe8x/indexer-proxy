@@ -121,8 +121,8 @@ impl CommandLineArgs {
     }
 
     pub fn decrypt(&self, iv: &str, ciphertext: &str) -> Result<String, Error> {
-        let iv = hex::decode(iv).map_err(|_| Error::InvalidEncrypt)?;
-        let ctext = hex::decode(ciphertext).map_err(|_| Error::InvalidEncrypt)?;
+        let iv = hex::decode(iv).map_err(|_| Error::InvalidEncrypt(1042))?;
+        let ctext = hex::decode(ciphertext).map_err(|_| Error::InvalidEncrypt(1042))?;
 
         let ptext = decrypt(
             Cipher::aes_256_ctr(),
@@ -130,9 +130,9 @@ impl CommandLineArgs {
             Some(&iv),
             &ctext,
         )
-        .map_err(|_| Error::InvalidEncrypt)?;
+        .map_err(|_| Error::InvalidEncrypt(1043))?;
 
-        String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt)
+        String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt(1044))
     }
 
     pub fn debug(&self) -> bool {

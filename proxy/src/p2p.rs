@@ -351,7 +351,6 @@ async fn handle_group(
             let event = Event::from_bytes(&data)?;
             match event {
                 Event::PaygInfo(project) => {
-                    println!("======= REQUEST PAYG PRICE: {:?}", project);
                     let payg = merket_price(project).await;
                     let e = Event::PaygPrice(serde_json::to_string(&payg)?);
 
@@ -359,34 +358,40 @@ async fn handle_group(
                     results.groups.push((gid, msg));
                 }
                 Event::PaygOpen(uid, state) => {
-                    println!("======= REQUEST PAYG OPEN: {}", peer_id.to_hex());
                     let res = match open_state(&serde_json::from_str(&state)?).await {
                         Ok(state) => state,
-                        Err(err) => json!({
-                            "error": err.to_status_message().1
-                        }),
+                        Err(err) => {
+                            let (_, code, error) = err.to_status_message();
+                            json!({
+                                "code": code,
+                                "error": error
+                            })
+                        }
                     };
                     let e = Event::PaygOpenRes(uid, serde_json::to_string(&res)?);
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
                     results.groups.push((gid, msg));
                 }
                 Event::PaygQuery(uid, query, state) => {
-                    println!("======= REQUEST PAYG QUERY: {} {}", peer_id.to_hex(), query);
                     let query: RpcParam = serde_json::from_str(&query)?;
                     let state: RpcParam = serde_json::from_str(&state)?;
                     let (res_data, res_state) =
                         if query.get("project").is_none() || query.get("query").is_none() {
-                            (json!({"error": "Invalid Request"}), state)
+                            (json!({"code": 1047, "error": "Invalid Request"}), state)
                         } else {
                             let project = query["project"].as_str().unwrap();
                             match query_state(project, &query, &state).await {
                                 Ok((res_query, res_state)) => (res_query, res_state),
-                                Err(err) => (
-                                    json!({
-                                        "error": err.to_status_message().1
-                                    }),
-                                    state,
-                                ),
+                                Err(err) => {
+                                    let (_, code, error) = err.to_status_message();
+                                    (
+                                        json!({
+                                            "code": code,
+                                            "error": error
+                                        }),
+                                        state,
+                                    )
+                                }
                             }
                         };
 
@@ -399,7 +404,6 @@ async fn handle_group(
                     results.groups.push((gid, msg));
                 }
                 Event::GroupJoin(gid) => {
-                    println!("======= RECEIVE GROUP JOIN: {}", peer_id.to_hex());
                     let mut ledger = ledger.write().await;
                     if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
                         vec_check_push(peers, peer_id);
@@ -410,7 +414,6 @@ async fn handle_group(
                     drop(ledger);
                 }
                 Event::GroupInfo => {
-                    println!("======= RECEIVE GROUP INFO: {}", peer_id.to_hex());
                     let mut ledger = ledger.write().await;
                     if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
                         vec_check_push(peers, peer_id);
@@ -418,7 +421,6 @@ async fn handle_group(
                     drop(ledger);
                 }
                 Event::Leave => {
-                    println!("======= RECEIVE GROUP LEAVE: {}", peer_id.to_hex());
                     // update ledger
                     let mut ledger = ledger.write().await;
                     if let Some((_, peers)) = ledger.groups.get_mut(&gid) {

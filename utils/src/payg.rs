@@ -117,7 +117,7 @@ impl OpenState {
         let sign = key
             .sign_message(hash)
             .await
-            .map_err(|_| Error::InvalidSignature)?;
+            .map_err(|_| Error::InvalidSignature(1041))?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -129,48 +129,48 @@ impl OpenState {
     pub fn from_json(params: &Value) -> Result<Self, Error> {
         let channel_id: U256 = params["channelId"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1106))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1106))?;
         let indexer: Address = params["indexer"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1107))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1107))?;
         let consumer: Address = params["consumer"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1108))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let total = U256::from_dec_str(params["total"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1108))?;
+        let total = U256::from_dec_str(params["total"].as_str().ok_or(Error::Serialize(1109))?)
+            .map_err(|_e| Error::Serialize(1109))?;
+        let price = U256::from_dec_str(params["price"].as_str().ok_or(Error::Serialize(1110))?)
+            .map_err(|_e| Error::Serialize(1110))?;
         let expiration = U256::from_dec_str(
             params["expiration"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1111))?,
         )
-        .map_err(|_e| Error::InvalidSerialize)?;
+        .map_err(|_e| Error::Serialize(1111))?;
         let deployment_id = cid_deployment(
             params["deploymentId"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1112))?,
         );
         if deployment_id == H256::zero() {
-            return Err(Error::InvalidSerialize);
+            return Err(Error::Serialize(1112));
         }
-        let callback = hex::decode(params["callback"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
+        let callback = hex::decode(params["callback"].as_str().ok_or(Error::Serialize(1113))?)
+            .map_err(|_e| Error::Serialize(1113))?;
         let indexer_sign: Signature = convert_string_to_sign(
             params["indexerSign"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1114))?,
         );
         let consumer_sign: Signature = convert_string_to_sign(
             params["consumerSign"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1115))?,
         );
 
         Ok(Self {
@@ -259,7 +259,7 @@ impl QueryState {
         let sign = key
             .sign_message(hash)
             .await
-            .map_err(|_| Error::InvalidSignature)?;
+            .map_err(|_| Error::InvalidSignature(1041))?;
         if is_consumer {
             self.consumer_sign = sign;
         } else {
@@ -271,33 +271,33 @@ impl QueryState {
     pub fn from_json(params: &Value) -> Result<Self, Error> {
         let channel_id: U256 = params["channelId"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1106))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1106))?;
         let indexer: Address = params["indexer"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1107))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1107))?;
         let consumer: Address = params["consumer"]
             .as_str()
-            .ok_or(Error::InvalidSerialize)?
+            .ok_or(Error::Serialize(1108))?
             .parse()
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let spent = U256::from_dec_str(params["spent"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let remote = U256::from_dec_str(params["remote"].as_str().ok_or(Error::InvalidSerialize)?)
-            .map_err(|_e| Error::InvalidSerialize)?;
-        let is_final = params["isFinal"].as_bool().ok_or(Error::InvalidSerialize)?;
+            .map_err(|_e| Error::Serialize(1108))?;
+        let spent = U256::from_dec_str(params["spent"].as_str().ok_or(Error::Serialize(1116))?)
+            .map_err(|_e| Error::Serialize(1116))?;
+        let remote = U256::from_dec_str(params["remote"].as_str().ok_or(Error::Serialize(1117))?)
+            .map_err(|_e| Error::Serialize(1117))?;
+        let is_final = params["isFinal"].as_bool().ok_or(Error::Serialize(1118))?;
         let indexer_sign: Signature = convert_string_to_sign(
             params["indexerSign"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1114))?,
         );
         let consumer_sign: Signature = convert_string_to_sign(
             params["consumerSign"]
                 .as_str()
-                .ok_or(Error::InvalidSerialize)?,
+                .ok_or(Error::Serialize(1115))?,
         );
         Ok(Self {
             channel_id,
@@ -343,7 +343,7 @@ pub async fn fund_sign(
     let hash = keccak256(payload);
     key.sign_message(hash)
         .await
-        .map_err(|_| Error::InvalidSignature)
+        .map_err(|_| Error::InvalidSignature(1041))
 }
 
 pub fn default_sign() -> Signature {
