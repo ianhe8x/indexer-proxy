@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use subql_utils::{error::Error, request::graphql_request, types::Result};
+use subql_utils::{error::Error, query::METADATA_QUERY, request::graphql_request, types::Result};
 use tdn::types::group::hash_to_group_id;
 
 use crate::cli::COMMAND;
@@ -143,4 +143,10 @@ pub async fn init_projects() {
             }
         }
     }
+}
+
+pub async fn project_metadata(id: &str) -> Result<Value> {
+    let project = get_project(id)?;
+    let query = json!({ "query": METADATA_QUERY });
+    graphql_request(&project.query_endpoint, &query).await
 }

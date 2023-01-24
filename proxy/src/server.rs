@@ -30,7 +30,6 @@ use subql_utils::{
     constants::HEADERS,
     eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
-    query::METADATA_QUERY,
     request::graphql_request,
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -38,7 +37,7 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::contracts::check_agreement_and_consumer;
 use crate::payg::{open_state, query_state, AuthPayg};
-use crate::project::get_project;
+use crate::project::{get_project, project_metadata};
 use crate::{account, cli::COMMAND, prometheus};
 
 #[derive(Serialize)]
@@ -193,10 +192,8 @@ pub async fn payg_handler(
 }
 
 pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
-    let project = get_project(&id)?;
-    let query = json!({ "query": METADATA_QUERY });
-    let response = graphql_request(&project.query_endpoint, &query).await?;
-    Ok(Json(response))
+    let res = project_metadata(&id).await?;
+    Ok(Json(res))
 }
 
 pub async fn healthy_handler() -> Result<Json<Value>, Error> {

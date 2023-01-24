@@ -38,6 +38,7 @@ use tokio::sync::{mpsc::Sender, RwLock};
 
 use crate::cli::COMMAND;
 use crate::payg::{merket_price, open_state, query_state};
+use crate::project::project_metadata;
 
 pub static P2P_SENDER: Lazy<RwLock<Vec<ChannelRpcSender>>> = Lazy::new(|| RwLock::new(vec![]));
 
@@ -213,7 +214,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
 
             // broadcast event in root group
             results.networks.push(NetworkType::AddGroup(gid));
-            let bytes = Event::GroupJoin(gid).to_bytes();
+            let bytes = Event::ProjectJoin(gid).to_bytes();
             for peer in root_peers {
                 results
                     .groups
@@ -235,7 +236,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
             drop(ledger);
 
             if let Some((_, peers)) = peers {
-                let leave_event = Event::Leave.to_bytes();
+                let leave_event = Event::ProjectLeave.to_bytes();
                 let ledger = state.0.read().await;
                 for peer in peers {
                     let mut is_keep = false;
@@ -269,7 +270,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
             let payg = params[0].as_str().ok_or(RpcError::ParseError)?;
 
             let mut results = HandleResult::new();
-            let e = Event::PaygPrice(payg.to_owned()).to_bytes();
+            let e = Event::ProjectInfoRes(payg.to_owned()).to_bytes();
             let ledger = state.0.read().await;
             if let Some((_, peers)) = ledger.groups.get(&gid) {
                 for p in peers {
@@ -350,9 +351,50 @@ async fn handle_group(
             );
             let event = Event::from_bytes(&data)?;
             match event {
-                Event::PaygInfo(project) => {
+                Event::ProjectJoin(gid) => {
+                    let mut ledger = ledger.write().await;
+                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
+                        vec_check_push(peers, peer_id);
+                        let e = Event::ProjectJoinRes;
+                        let msg = SendType::Event(0, peer_id, e.to_bytes());
+                        results.groups.push((gid, msg));
+                    }
+                    drop(ledger);
+                }
+                Event::ProjectJoinRes => {
+                    let mut ledger = ledger.write().await;
+                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
+                        vec_check_push(peers, peer_id);
+                    }
+                    drop(ledger);
+                }
+                Event::ProjectLeave => {
+                    // update ledger
+                    let mut ledger = ledger.write().await;
+                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
+                        vec_remove_item(peers, &peer_id);
+                    }
+                    drop(ledger);
+                }
+                Event::ProjectMetadata(uid, project) => {
+                    let res = match project_metadata(&project).await {
+                        Ok(res) => res,
+                        Err(err) => {
+                            let (_, code, error) = err.to_status_message();
+                            json!({
+                                "code": code,
+                                "error": error
+                            })
+                        }
+                    };
+
+                    let e = Event::ProjectMetadataRes(uid, project, serde_json::to_string(&res)?);
+                    let msg = SendType::Event(0, peer_id, e.to_bytes());
+                    results.groups.push((gid, msg));
+                }
+                Event::ProjectInfo(project) => {
                     let payg = merket_price(project).await;
-                    let e = Event::PaygPrice(serde_json::to_string(&payg)?);
+                    let e = Event::ProjectInfoRes(serde_json::to_string(&payg)?);
 
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
                     results.groups.push((gid, msg));
@@ -402,31 +444,6 @@ async fn handle_group(
                     );
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
                     results.groups.push((gid, msg));
-                }
-                Event::GroupJoin(gid) => {
-                    let mut ledger = ledger.write().await;
-                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
-                        vec_check_push(peers, peer_id);
-                        let e = Event::GroupInfo;
-                        let msg = SendType::Event(0, peer_id, e.to_bytes());
-                        results.groups.push((gid, msg));
-                    }
-                    drop(ledger);
-                }
-                Event::GroupInfo => {
-                    let mut ledger = ledger.write().await;
-                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
-                        vec_check_push(peers, peer_id);
-                    }
-                    drop(ledger);
-                }
-                Event::Leave => {
-                    // update ledger
-                    let mut ledger = ledger.write().await;
-                    if let Some((_, peers)) = ledger.groups.get_mut(&gid) {
-                        vec_remove_item(peers, &peer_id);
-                    }
-                    drop(ledger);
                 }
                 _ => {
                     debug!("Not handle event: {:?}", event);

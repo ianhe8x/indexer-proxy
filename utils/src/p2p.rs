@@ -8,23 +8,35 @@ pub struct JoinData(pub Vec<String>);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Event {
-    /// group join
-    GroupJoin(u64),
-    /// group join info response
-    GroupInfo,
-    /// group leave
-    Leave,
-    /// payg request
-    PaygInfo(Option<String>),
-    /// payg price response
-    PaygPrice(String),
-    /// open state
+    /// Project join
+    ProjectJoin(u64),
+    /// Project join response
+    ProjectJoinRes,
+    /// Project leave
+    ProjectLeave,
+    /// Query the project metadata,
+    /// params: uid, project
+    ProjectMetadata(u64, String),
+    /// Response the project metadata,
+    /// params: uid, project, metadata
+    ProjectMetadataRes(u64, String, String),
+    /// Request the project info
+    /// params: project
+    ProjectInfo(Option<String>),
+    /// Response project price and info,
+    /// params: project info
+    ProjectInfoRes(String),
+    /// Open the state channel channel,
+    /// params: uid, open state
     PaygOpen(u64, String),
-    /// open state
+    /// Response the channel open,
+    /// params: uid, open state
     PaygOpenRes(u64, String),
-    /// query, state
+    /// Query the by channel,
+    /// params: uid, query, state
     PaygQuery(u64, String, String),
-    /// data, state
+    /// Response the channel query,
+    /// params: uid, data, state
     PaygQueryRes(u64, String, String),
 }
 
