@@ -131,7 +131,7 @@ pub async fn handle_account(value: &Value) -> Result<()> {
 pub async fn init_account() {
     let url = COMMAND.graphql_url();
     let query = json!({"query": "query { accountMetadata { indexer controller } }" });
-    let value = graphql_request(&url, &query).await.unwrap();
+    let value = graphql_request(&url, &query.to_string()).await.unwrap();
 
     if let Some(value) = value.pointer("/data/accountMetadata") {
         handle_account(value).await.unwrap(); // init need unwrap if has error.

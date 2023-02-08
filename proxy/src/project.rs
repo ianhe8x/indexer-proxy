@@ -133,7 +133,7 @@ pub async fn init_projects() {
     // graphql query for getting alive projects
     let url = COMMAND.graphql_url();
     let query = json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
-    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
+    let value = graphql_request(&url, &query.to_string()).await.unwrap(); // init need unwrap
     println!("==== DEBUG ==== : {}", value);
 
     if let Some(items) = value.pointer("/data/getAliveProjects") {
@@ -147,6 +147,12 @@ pub async fn init_projects() {
 
 pub async fn project_metadata(id: &str) -> Result<Value> {
     let project = get_project(id)?;
-    let query = json!({ "query": METADATA_QUERY });
+    let query = json!({ "query": METADATA_QUERY }).to_string();
     graphql_request(&project.query_endpoint, &query).await
+}
+
+pub async fn project_query(id: &str, query: &str) -> Result<Value> {
+    let project = get_project(id)?;
+    crate::prometheus::push_query_metrics(id.to_owned());
+    graphql_request(&project.query_endpoint, query).await
 }

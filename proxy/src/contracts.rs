@@ -82,7 +82,7 @@ pub async fn check_agreement_and_consumer(
         .unwrap_or(0);
 
     // check allowlist
-    let allow = if chain_consumer != signer {
+    let allow = if chain_consumer != signer.to_lowercase() {
         let signer_address: Address = signer.parse().unwrap();
         let allow_res: Token = agreement
             .method::<_, Token>("consumerAuthAllows", (consumer, signer_address))
@@ -95,6 +95,11 @@ pub async fn check_agreement_and_consumer(
         true
     };
 
+    println!("allow: {}", allow);
+    println!(
+        "checked: {}",
+        start <= now && now <= (start + period) && allow
+    );
     let checked = start <= now && now <= (start + period) && allow;
     let (daily, rate) = if checked {
         let plan_info: Token = plan

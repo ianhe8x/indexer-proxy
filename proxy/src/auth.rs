@@ -29,6 +29,7 @@ use std::net::SocketAddr;
 use subql_utils::{error::Error, types::Result};
 
 use crate::cli::{redis, COMMAND};
+use crate::contracts::check_agreement_and_consumer;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Payload {
@@ -91,20 +92,7 @@ pub async fn create_jwt(
     }
 
     if let Some(agreement) = &claims.agreement {
-        // Add the limit to cache.
-        let daily_limit = format!("{}-dlimit", agreement);
-        let rate_limit = format!("{}-rlimit", agreement);
-
-        // keep the redis expired slower than token.
-        let limit_expired = (COMMAND.token_duration() as usize * 3600) * 2;
-
-        // update the limit
-        let conn = redis();
-        let mut conn_lock = conn.lock().await;
-        let _: RedisResult<()> = conn_lock.set_ex(&daily_limit, daily, limit_expired).await;
-        let _: RedisResult<()> = conn_lock.set_ex(&rate_limit, rate, limit_expired).await;
-
-        drop(conn_lock);
+        save_agreement(&agreement, daily, rate, None).await;
     }
 
     encode(
@@ -129,73 +117,13 @@ where
         req: &mut Parts,
         _state: &S,
     ) -> std::result::Result<Self, Self::Rejection> {
-        // Get authorisation header
-        let authorisation = req
-            .headers
-            .get(AUTHORIZATION)
-            .ok_or(Error::Permission(1020))?
-            .to_str()
-            .map_err(|_| Error::Permission(1020))?;
+        let claims = check_jwt(req)?;
 
-        // Check that is bearer and jwt
-        let split = authorisation.split_once(' ');
-        let jwt = match split {
-            Some((name, contents)) if name == "Bearer" => Ok(contents),
-            _ => Err(Error::InvalidAuthHeader(1030)),
-        }?;
-
-        let decoded = decode::<Claims>(
-            jwt,
-            &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
-            &Validation::new(Algorithm::HS512),
-        )
-        .map_err(|_| Error::AuthVerify(1005))?;
-
-        if decoded.claims.exp < Utc::now().timestamp_millis() {
-            return Err(Error::AuthExpired(1006));
+        if let Some(agreement) = claims.agreement {
+            check_agreement_limit(&agreement).await?;
         }
 
-        if let Some(agreement) = decoded.claims.agreement {
-            // check limit
-            let daily_key = format!("{}-daily", agreement);
-            let rate_key = format!("{}-rate", agreement);
-            let daily_limit = format!("{}-dlimit", agreement);
-            let rate_limit = format!("{}-rlimit", agreement);
-
-            let conn = redis();
-            let mut conn_lock = conn.lock().await;
-
-            let daily_limit: u64 = conn_lock.get(&daily_limit).await.unwrap_or(86400);
-            let rate_limit: u64 = conn_lock.get(&rate_limit).await.unwrap_or(60);
-
-            let daily_times: RedisResult<u64> = conn_lock.get(&daily_key).await;
-            let rate_times: RedisResult<u64> = conn_lock.get(&rate_key).await;
-
-            let daily_times = if let Ok(times) = daily_times {
-                if times > daily_limit {
-                    return Err(Error::DailyLimit(1051));
-                } else {
-                    times + 1
-                }
-            } else {
-                1
-            };
-            let rate_times = if let Ok(times) = rate_times {
-                if times > rate_limit {
-                    return Err(Error::RateLimit(1052));
-                } else {
-                    times + 1
-                }
-            } else {
-                1
-            };
-
-            let _: RedisResult<()> = conn_lock.set_ex(&daily_key, daily_times, 86400).await;
-            let _: RedisResult<()> = conn_lock.set_ex(&rate_key, rate_times, 60).await;
-            drop(conn_lock);
-        }
-
-        Ok(AuthQuery(decoded.claims.deployment_id))
+        Ok(AuthQuery(claims.deployment_id))
     }
 }
 
@@ -213,51 +141,11 @@ where
         req: &mut Parts,
         _state: &S,
     ) -> std::result::Result<Self, Self::Rejection> {
-        // Get authorisation header
-        let authorisation = req
-            .headers
-            .get(AUTHORIZATION)
-            .ok_or(Error::Permission(1020))?
-            .to_str()
-            .map_err(|_| Error::Permission(1020))?;
+        let claims = check_jwt(req)?;
 
-        // Check that is bearer and jwt
-        let split = authorisation.split_once(' ');
-        let jwt = match split {
-            Some((name, contents)) if name == "Bearer" => Ok(contents),
-            _ => Err(Error::InvalidAuthHeader(1030)),
-        }?;
-
-        let decoded = decode::<Claims>(
-            jwt,
-            &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
-            &Validation::new(Algorithm::HS512),
-        )
-        .map_err(|_| Error::AuthVerify(1005))?;
-
-        if decoded.claims.exp < Utc::now().timestamp_millis() {
-            return Err(Error::AuthExpired(1006));
-        }
-
-        if let Some(agreement) = decoded.claims.agreement {
-            // check limit
-            let daily_key = format!("{}-daily", agreement);
-            let rate_key = format!("{}-rate", agreement);
-            let daily_limit = format!("{}-dlimit", agreement);
-            let rate_limit = format!("{}-rlimit", agreement);
-
-            let conn = redis();
-            let mut conn_lock = conn.lock().await;
-
-            let daily_limit: u64 = conn_lock.get(&daily_limit).await.unwrap_or(86400);
-            let rate_limit: u64 = conn_lock.get(&rate_limit).await.unwrap_or(60);
-
-            let daily_times: RedisResult<u64> = conn_lock.get(&daily_key).await;
-            let rate_times: RedisResult<u64> = conn_lock.get(&rate_key).await;
-            drop(conn_lock);
-            let daily_times = daily_times.unwrap_or(0);
-            let rate_times = rate_times.unwrap_or(0);
-
+        if let Some(agreement) = claims.agreement {
+            let (daily_limit, daily_times, rate_limit, rate_times) =
+                get_agreement_limit(&agreement).await;
             Ok(AuthQueryLimit(
                 daily_limit,
                 daily_times,
@@ -268,4 +156,146 @@ where
             Ok(AuthQueryLimit(1, 0, 1, 0))
         }
     }
+}
+
+fn check_jwt(req: &mut Parts) -> Result<Claims> {
+    // Get authorisation header
+    let authorisation = req
+        .headers
+        .get(AUTHORIZATION)
+        .ok_or(Error::Permission(1020))?
+        .to_str()
+        .map_err(|_| Error::Permission(1020))?;
+
+    // Check that is bearer and jwt
+    let split = authorisation.split_once(' ');
+    let jwt = match split {
+        Some((name, contents)) if name == "Bearer" => Ok(contents),
+        _ => Err(Error::InvalidAuthHeader(1030)),
+    }?;
+
+    let decoded = decode::<Claims>(
+        jwt,
+        &DecodingKey::from_secret(COMMAND.jwt_secret().as_bytes()),
+        &Validation::new(Algorithm::HS512),
+    )
+    .map_err(|_| Error::AuthVerify(1005))?;
+
+    if decoded.claims.exp < Utc::now().timestamp_millis() {
+        return Err(Error::AuthExpired(1006));
+    }
+
+    Ok(decoded.claims)
+}
+
+pub async fn check_and_save_agreement(signer: &str, agreement: &str) -> Result<()> {
+    check_agreement_with_signer(signer, agreement).await?;
+
+    // check limit is valid
+    check_agreement_limit(agreement).await?;
+
+    Ok(())
+}
+
+pub async fn check_and_get_agreement_limit(
+    signer: &str,
+    agreement: &str,
+) -> Result<(u64, u64, u64, u64)> {
+    check_agreement_with_signer(signer, agreement).await?;
+
+    // get limit
+    Ok(get_agreement_limit(agreement).await)
+}
+
+async fn check_agreement_with_signer(signer: &str, agreement: &str) -> Result<()> {
+    // check already has agreement
+    let daily_limit_name = format!("{}-dlimit", agreement);
+    let ca_consumer = format!("{}-{}", agreement, signer);
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+    let daily_limit: RedisResult<u64> = conn_lock.get(&daily_limit_name).await;
+    let ca_checked: RedisResult<bool> = conn_lock.get(&ca_consumer).await;
+    drop(conn_lock);
+
+    if daily_limit.is_err() {
+        // init agreement
+        let (checked, daily, rate) = check_agreement_and_consumer(signer, agreement).await?;
+        if !checked {
+            return Err(Error::AuthCreate(1001));
+        }
+        save_agreement(agreement, daily, rate, Some(signer)).await;
+    } else if ca_checked.is_err() {
+        return Err(Error::AuthExpired(1006));
+    }
+
+    Ok(())
+}
+
+async fn save_agreement(agreement: &str, daily: u64, rate: u64, signer: Option<&str>) {
+    let daily_limit = format!("{}-dlimit", agreement);
+    let rate_limit = format!("{}-rlimit", agreement);
+
+    // keep the redis expired slower than token.
+    let limit_expired = (COMMAND.token_duration() as usize * 3600) * 2;
+
+    // update the limit
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+    let _: RedisResult<()> = conn_lock.set_ex(&daily_limit, daily, limit_expired).await;
+    let _: RedisResult<()> = conn_lock.set_ex(&rate_limit, rate, limit_expired).await;
+    if let Some(signer) = signer {
+        let ca_consumer = format!("{}-{}", agreement, signer);
+        let _: RedisResult<()> = conn_lock.set_ex(&ca_consumer, true, limit_expired).await;
+    }
+
+    drop(conn_lock);
+}
+
+async fn check_agreement_limit(agreement: &str) -> Result<()> {
+    // check limit
+    let (daily_limit, daily_times, rate_limit, rate_times) = get_agreement_limit(agreement).await;
+
+    let daily_times = if daily_times > daily_limit {
+        return Err(Error::DailyLimit(1051));
+    } else {
+        daily_times + 1
+    };
+
+    let rate_times = if rate_times > rate_limit {
+        return Err(Error::RateLimit(1052));
+    } else {
+        rate_times + 1
+    };
+
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+    let daily_key = format!("{}-daily", agreement);
+    let rate_key = format!("{}-rate", agreement);
+    let _: RedisResult<()> = conn_lock.set_ex(&daily_key, daily_times, 86400).await;
+    let _: RedisResult<()> = conn_lock.set_ex(&rate_key, rate_times, 60).await;
+    drop(conn_lock);
+
+    Ok(())
+}
+
+async fn get_agreement_limit(agreement: &str) -> (u64, u64, u64, u64) {
+    // check limit
+    let daily_key = format!("{}-daily", agreement);
+    let rate_key = format!("{}-rate", agreement);
+    let daily_limit = format!("{}-dlimit", agreement);
+    let rate_limit = format!("{}-rlimit", agreement);
+
+    let conn = redis();
+    let mut conn_lock = conn.lock().await;
+
+    let daily_limit: u64 = conn_lock.get(&daily_limit).await.unwrap_or(86400);
+    let rate_limit: u64 = conn_lock.get(&rate_limit).await.unwrap_or(60);
+
+    let daily_times: RedisResult<u64> = conn_lock.get(&daily_key).await;
+    let rate_times: RedisResult<u64> = conn_lock.get(&rate_key).await;
+    drop(conn_lock);
+    let daily_times = daily_times.unwrap_or(0);
+    let rate_times = rate_times.unwrap_or(0);
+
+    (daily_limit, daily_times, rate_limit, rate_times)
 }

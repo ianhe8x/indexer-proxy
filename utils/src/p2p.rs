@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 /// "SubQuery" hash to group id as root group id.
 pub const ROOT_GROUP_ID: u64 = 12408845626691334533;
 
+/// Root name for projects
+pub const ROOT_NAME: &str = "SubQuery";
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JoinData(pub Vec<String>);
 
@@ -32,12 +35,24 @@ pub enum Event {
     /// Response the channel open,
     /// params: uid, open state
     PaygOpenRes(u64, String),
-    /// Query the by channel,
+    /// Query data the by channel,
     /// params: uid, query, state
     PaygQuery(u64, String, String),
     /// Response the channel query,
     /// params: uid, data, state
     PaygQueryRes(u64, String, String),
+    /// Query the close agreement limit,
+    /// params: uid, agreement id
+    CloseAgreementLimit(u64, String),
+    /// Response the close agreement limit
+    /// params: uid, agreement info
+    CloseAgreementLimitRes(u64, String),
+    /// Query data by close agreement,
+    /// params: uid, agreement, project, query
+    CloseAgreementQuery(u64, String, String, String),
+    /// Response the close agreement query,
+    /// params: uid, data
+    CloseAgreementQueryRes(u64, String),
 }
 
 impl Event {

@@ -21,7 +21,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 /// App error type.
 #[derive(Debug)]
@@ -56,6 +56,15 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn to_json(self) -> Value {
+        let (_, code, error) = self.to_status_message();
+
+        json!({
+            "code": code,
+            "error": error
+        })
+    }
+
     pub fn to_status_message<'a>(self) -> (StatusCode, i32, &'a str) {
         match self {
             Error::AuthCreate(c) => (StatusCode::UNAUTHORIZED, c, "Auth create failure"),

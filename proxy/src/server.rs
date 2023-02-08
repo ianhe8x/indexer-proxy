@@ -30,14 +30,13 @@ use subql_utils::{
     constants::HEADERS,
     eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
-    request::graphql_request,
 };
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::contracts::check_agreement_and_consumer;
 use crate::payg::{open_state, query_state, AuthPayg};
-use crate::project::{get_project, project_metadata};
+use crate::project::{get_project, project_metadata, project_query};
 use crate::{account, cli::COMMAND, prometheus};
 
 #[derive(Serialize)]
@@ -151,18 +150,14 @@ pub async fn generate_token(
 pub async fn query_handler(
     AuthQuery(deployment_id): AuthQuery,
     Path(id): Path<String>,
-    Json(query): Json<Value>,
+    Json(query): Json<String>,
 ) -> Result<Json<Value>, Error> {
     if COMMAND.auth() && id != deployment_id {
         return Err(Error::AuthVerify(1004));
     };
 
-    let project = get_project(&id)?;
-
-    prometheus::push_query_metrics(id.to_owned());
-
-    let response = graphql_request(&project.query_endpoint, &query).await?;
-    Ok(Json(response))
+    let res = project_query(&id, &query).await?;
+    Ok(Json(res))
 }
 
 pub async fn query_limit_handler(
@@ -184,7 +179,7 @@ pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Er
 pub async fn payg_handler(
     AuthPayg(state): AuthPayg,
     Path(id): Path<String>,
-    Json(query): Json<Value>,
+    Json(query): Json<String>,
 ) -> Result<Json<Value>, Error> {
     let (query_data, state_data) = query_state(&id, &query, &state).await?;
     prometheus::push_query_metrics(id);

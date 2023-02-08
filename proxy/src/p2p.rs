@@ -21,7 +21,10 @@ use std::collections::HashMap;
 use std::io::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subql_utils::p2p::{Event, JoinData, ROOT_GROUP_ID};
+use subql_utils::{
+    error::Error,
+    p2p::{Event, JoinData, ROOT_GROUP_ID, ROOT_NAME},
+};
 use tdn::{
     prelude::{
         channel_rpc_channel, start_with_config_and_key, ChannelRpcSender, Config, GroupId,
@@ -36,9 +39,10 @@ use tdn::{
 };
 use tokio::sync::{mpsc::Sender, RwLock};
 
+use crate::auth::{check_and_get_agreement_limit, check_and_save_agreement};
 use crate::cli::COMMAND;
 use crate::payg::{merket_price, open_state, query_state};
-use crate::project::project_metadata;
+use crate::project::{project_metadata, project_query};
 
 pub static P2P_SENDER: Lazy<RwLock<Vec<ChannelRpcSender>>> = Lazy::new(|| RwLock::new(vec![]));
 
@@ -88,7 +92,7 @@ pub async fn start_network(key: PeerKey) {
     debug!("Peer id: {:?}", peer_addr);
 
     let mut init_groups = HashMap::new();
-    init_groups.insert(ROOT_GROUP_ID, ("SubQuery".to_owned(), vec![]));
+    init_groups.insert(ROOT_GROUP_ID, (ROOT_NAME.to_owned(), vec![]));
     let ledger = Arc::new(RwLock::new(Ledger {
         groups: init_groups,
     }));
@@ -379,13 +383,7 @@ async fn handle_group(
                 Event::ProjectMetadata(uid, project) => {
                     let res = match project_metadata(&project).await {
                         Ok(res) => res,
-                        Err(err) => {
-                            let (_, code, error) = err.to_status_message();
-                            json!({
-                                "code": code,
-                                "error": error
-                            })
-                        }
+                        Err(err) => err.to_json(),
                     };
 
                     let e = Event::ProjectMetadataRes(uid, project, serde_json::to_string(&res)?);
@@ -402,13 +400,7 @@ async fn handle_group(
                 Event::PaygOpen(uid, state) => {
                     let res = match open_state(&serde_json::from_str(&state)?).await {
                         Ok(state) => state,
-                        Err(err) => {
-                            let (_, code, error) = err.to_status_message();
-                            json!({
-                                "code": code,
-                                "error": error
-                            })
-                        }
+                        Err(err) => err.to_json(),
                     };
                     let e = Event::PaygOpenRes(uid, serde_json::to_string(&res)?);
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
@@ -422,18 +414,9 @@ async fn handle_group(
                             (json!({"code": 1047, "error": "Invalid Request"}), state)
                         } else {
                             let project = query["project"].as_str().unwrap();
-                            match query_state(project, &query, &state).await {
+                            match query_state(project, &query.to_string(), &state).await {
                                 Ok((res_query, res_state)) => (res_query, res_state),
-                                Err(err) => {
-                                    let (_, code, error) = err.to_status_message();
-                                    (
-                                        json!({
-                                            "code": code,
-                                            "error": error
-                                        }),
-                                        state,
-                                    )
-                                }
+                                Err(err) => (err.to_json(), state),
                             }
                         };
 
@@ -442,6 +425,34 @@ async fn handle_group(
                         serde_json::to_string(&res_data)?,
                         serde_json::to_string(&res_state)?,
                     );
+                    let msg = SendType::Event(0, peer_id, e.to_bytes());
+                    results.groups.push((gid, msg));
+                }
+                Event::CloseAgreementLimit(uid, agreement) => {
+                    let res =
+                        match handle_close_agreement_limit(&peer_id.to_hex(), &agreement).await {
+                            Ok(data) => data,
+                            Err(err) => err.to_json(),
+                        };
+
+                    let e = Event::CloseAgreementLimitRes(uid, serde_json::to_string(&res)?);
+                    let msg = SendType::Event(0, peer_id, e.to_bytes());
+                    results.groups.push((gid, msg));
+                }
+                Event::CloseAgreementQuery(uid, agreement, project, query) => {
+                    let res = match handle_close_agreement_query(
+                        &peer_id.to_hex(),
+                        &agreement,
+                        &project,
+                        &query,
+                    )
+                    .await
+                    {
+                        Ok(data) => data,
+                        Err(err) => err.to_json(),
+                    };
+
+                    let e = Event::CloseAgreementQueryRes(uid, serde_json::to_string(&res)?);
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
                     results.groups.push((gid, msg));
                 }
@@ -478,4 +489,29 @@ async fn bootstrap(sender: &Sender<SendMessage>, ledger: Arc<RwLock<Ledger>>) {
                 .expect("TDN channel closed");
         }
     }
+}
+
+async fn handle_close_agreement_limit(
+    signer: &str,
+    agreement: &str,
+) -> std::result::Result<RpcParam, Error> {
+    let (daily_limit, daily_used, rate_limit, rate_used) =
+        check_and_get_agreement_limit(signer, &agreement).await?;
+
+    Ok(json!({
+        "daily_limit": daily_limit,
+        "daily_used": daily_used,
+        "rate_limit": rate_limit,
+        "rate_used": rate_used,
+    }))
+}
+
+async fn handle_close_agreement_query(
+    signer: &str,
+    agreement: &str,
+    project: &str,
+    query: &str,
+) -> std::result::Result<RpcParam, Error> {
+    check_and_save_agreement(signer, &agreement).await?;
+    project_query(project, query).await
 }

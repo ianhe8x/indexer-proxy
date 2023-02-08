@@ -45,7 +45,7 @@ pub struct GraphQLQuery {
 }
 
 // Request to graphql service.
-pub async fn graphql_request(uri: &str, query: &Value) -> Result<Value, Error> {
+pub async fn graphql_request(uri: &str, query: &str) -> Result<Value, Error> {
     let response_result = REQUEST_CLIENT
         .post(uri)
         .header(CONTENT_TYPE, APPLICATION_JSON)
@@ -156,6 +156,6 @@ pub fn jsonrpc_response(res: Result<Value, Error>) -> Result<Value, Value> {
                 Ok(json!("ok"))
             }
         }
-        Err(err) => Err(json!(err.to_status_message().1)),
+        Err(err) => Err(err.to_json()),
     }
 }
