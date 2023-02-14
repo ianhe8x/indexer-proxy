@@ -9,7 +9,7 @@ pub const ROOT_NAME: &str = "SubQuery";
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JoinData(pub Vec<String>);
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Event {
     /// Project join
     ProjectJoin(u64),
@@ -17,12 +17,9 @@ pub enum Event {
     ProjectJoinRes,
     /// Project leave
     ProjectLeave,
-    /// Query the project metadata,
-    /// params: uid, project
-    ProjectMetadata(u64, String),
-    /// Response the project metadata,
-    /// params: uid, project, metadata
-    ProjectMetadataRes(u64, String, String),
+    /// Report project healthy
+    /// params: metadata
+    ProjectHealthy(String),
     /// Request the project info
     /// params: project
     ProjectInfo(Option<String>),

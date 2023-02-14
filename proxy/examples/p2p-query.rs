@@ -95,13 +95,6 @@ pub async fn test_close_agreement(consumer: Address, indexer: Address, controlle
     println!("Join the deployment: {}", deployment);
     send("project-join", vec![json!(deployment)], ROOT_GROUP_ID).await;
 
-    println!("Query the project {} metadata...", deployment);
-    let params = vec![json!(format!("{:?}", controller)), json!(deployment)];
-    let res = sync_send("project-metadata", params, ROOT_GROUP_ID)
-        .await
-        .unwrap();
-    println!("Metadata: {}", res);
-
     println!("START Query the project limit ...");
     let params = vec![json!(format!("{:?}", controller)), json!(agreement)];
     let res = sync_send("project-limit", params, ROOT_GROUP_ID)
@@ -248,22 +241,6 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
     );
 
     rpc_handler.add_method(
-        "project-metadata",
-        |gid: GroupId, params: Vec<RpcParam>, _state: Arc<State>| async move {
-            let uid = params[0].as_u64().ok_or(RpcError::ParseError)?;
-            let remote = params[1].as_str().ok_or(RpcError::ParseError)?;
-            let project = params[2].as_str().ok_or(RpcError::ParseError)?.to_owned();
-            let pid = PeerId::from_hex(remote)?;
-
-            let data = Event::ProjectMetadata(uid, project).to_bytes();
-            Ok(HandleResult::group(
-                gid,
-                SendType::Event(0, pid, data.clone()),
-            ))
-        },
-    );
-
-    rpc_handler.add_method(
         "project-limit",
         |gid: GroupId, params: Vec<RpcParam>, _state: Arc<State>| async move {
             let uid = params[0].as_u64().ok_or(RpcError::ParseError)?;
@@ -363,12 +340,9 @@ async fn handle_group(
                     }
                     drop(ledger);
                 }
-                Event::ProjectMetadataRes(uid, project, metadata) => {
+                Event::ProjectHealthy(metadata) => {
                     let res: RpcParam = serde_json::from_str(&metadata)?;
-                    results.rpcs.push(json!({
-                        "uid": uid,
-                        "value": vec![json!(project), res]
-                    }));
+                    println!("GOT project healthy report: {}", res);
                 }
                 Event::CloseAgreementLimitRes(uid, data) => {
                     let state: RpcParam = serde_json::from_str(&data)?;

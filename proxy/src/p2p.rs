@@ -56,12 +56,28 @@ pub async fn send(method: &str, params: Vec<RpcParam>, gid: GroupId) {
 pub async fn stop_network() {
     let senders = P2P_SENDER.read().await;
     if senders.is_empty() {
-        debug!("NONE NETWORK");
+        warn!("NONE NETWORK");
     } else {
         debug!("RESTART NEW P2P NETWORK");
         senders[0].send(rpc_request(0, "p2p-stop", vec![], 0)).await;
         drop(senders);
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+}
+
+pub async fn report_healthy() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+        let senders = P2P_SENDER.read().await;
+        if senders.is_empty() {
+            warn!("NONE NETWORK");
+        } else {
+            debug!("Report projects healthy");
+            senders[0]
+                .send(rpc_request(0, "project-report-healthy", vec![], 0))
+                .await;
+        }
+        drop(senders);
     }
 }
 
@@ -79,6 +95,7 @@ pub async fn start_network(key: PeerKey) {
             warn!("GOT NOT HANDLE RPC: {:?}", msg);
         }
     });
+    tokio::spawn(report_healthy());
 
     let mut config = Config::default();
     config.only_stable_data = true;
@@ -198,7 +215,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
     });
 
     rpc_handler.add_method(
-        "group-join",
+        "project-join",
         |_gid: GroupId, params: Vec<RpcParam>, state: Arc<State>| async move {
             if params.len() != 1 {
                 return Err(RpcError::ParseError);
@@ -230,7 +247,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
     );
 
     rpc_handler.add_method(
-        "group-leave",
+        "project-leave",
         |gid: GroupId, _params: Vec<RpcParam>, state: Arc<State>| async move {
             let mut results = HandleResult::new();
 
@@ -266,7 +283,34 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
     );
 
     rpc_handler.add_method(
-        "group-broadcast-payg",
+        "project-report-healthy",
+        |_gid: GroupId, _params: Vec<RpcParam>, state: Arc<State>| async move {
+            let mut results = HandleResult::new();
+
+            let ledger = state.0.read().await;
+            let groups = ledger.groups.clone();
+            drop(ledger);
+
+            for (gid, (project, peers)) in groups {
+                let res = match project_metadata(&project).await {
+                    Ok(res) => res,
+                    Err(err) => err.to_json(),
+                };
+                let data = serde_json::to_string(&res).unwrap_or("".to_owned());
+                let event = Event::ProjectHealthy(data).to_bytes();
+                for peer in peers {
+                    results
+                        .groups
+                        .push((gid, SendType::Event(0, peer, event.clone())));
+                }
+            }
+
+            Ok(results)
+        },
+    );
+
+    rpc_handler.add_method(
+        "project-broadcast-payg",
         |gid: GroupId, params: Vec<RpcParam>, state: Arc<State>| async move {
             if params.len() != 1 {
                 return Err(RpcError::ParseError);
@@ -379,16 +423,6 @@ async fn handle_group(
                         vec_remove_item(peers, &peer_id);
                     }
                     drop(ledger);
-                }
-                Event::ProjectMetadata(uid, project) => {
-                    let res = match project_metadata(&project).await {
-                        Ok(res) => res,
-                        Err(err) => err.to_json(),
-                    };
-
-                    let e = Event::ProjectMetadataRes(uid, project, serde_json::to_string(&res)?);
-                    let msg = SendType::Event(0, peer_id, e.to_bytes());
-                    results.groups.push((gid, msg));
                 }
                 Event::ProjectInfo(project) => {
                     let payg = merket_price(project).await;

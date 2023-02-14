@@ -67,7 +67,7 @@ pub fn add_project(
         tokio::spawn(async move {
             let price = merket_price(Some(deployment_id.clone())).await;
             let data = serde_json::to_string(&price).unwrap();
-            send("group-broadcast-payg", vec![json!(data)], gid).await
+            send("project-broadcast-payg", vec![json!(data)], gid).await
         });
     } else {
         let params = vec![json!(&deployment_id)];
@@ -76,7 +76,7 @@ pub fn add_project(
             if is_init {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             }
-            send("group-join", params, 0).await;
+            send("project-join", params, 0).await;
         });
     }
 }
@@ -134,7 +134,6 @@ pub async fn init_projects() {
     let url = COMMAND.graphql_url();
     let query = json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
     let value = graphql_request(&url, &query.to_string()).await.unwrap(); // init need unwrap
-    println!("==== DEBUG ==== : {}", value);
 
     if let Some(items) = value.pointer("/data/getAliveProjects") {
         if let Some(projects) = items.as_array() {
