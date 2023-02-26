@@ -84,7 +84,7 @@ pub struct CommandLineArgs {
     #[structopt(short = "j", long = "jwt-secret")]
     pub jwt_secret: String,
     /// Blockchain network type
-    #[structopt(long = "network", default_value = "moonbase")]
+    #[structopt(long = "network", default_value = "testnet")]
     pub network: String,
     /// Blockchain network endpoint
     #[structopt(
@@ -168,12 +168,7 @@ impl CommandLineArgs {
     }
 
     pub fn network(&self) -> Network {
-        match self.network.as_str() {
-            "testnet" => Network::Testnet,
-            "moonbase" => Network::Moonbase,
-            "mainnet" => Network::Mainnet,
-            _ => Network::Testnet,
-        }
+        Network::from_str(&self.network)
     }
 
     pub fn redis_endpoint(&self) -> &str {

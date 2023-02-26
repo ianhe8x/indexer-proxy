@@ -34,7 +34,7 @@ OPTIONS:
         --endpoint <endpoint>                    Endpoint of this service [default: http://127.0.0.1:80]
         --host <host>                            IP address for the server [default: 127.0.0.1]
     -j, --jwt-secret <jwt-secret>                Secret key for generate auth token
-        --network <network>                      Blockchain network type [default: moonbase]
+        --network <network>                      Blockchain network type [default: testnet]
         --network-endpoint <network-endpoint>
             Blockchain network endpoint [default: https://moonbeam-alpha.api.onfinality.io/public]
 

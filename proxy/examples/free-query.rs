@@ -73,7 +73,7 @@ async fn main() -> std::io::Result<()> {
     let consumer = format!("{:?}", signer.address());
 
     let timestamp = Utc::now().timestamp_millis();
-    let chain_id = 1287; // moonbase
+    let chain_id = 1287; // testnet
     let msg = payload_712(&indexer, &deployment, timestamp, chain_id);
     let sign = hex::encode(signer.sign_hash(msg.into()).to_vec());
 
@@ -83,7 +83,7 @@ async fn main() -> std::io::Result<()> {
     payload.insert("deployment_id", Value::String(deployment));
     payload.insert("signature", Value::String(sign));
     payload.insert("timestamp", timestamp.into());
-    payload.insert("chain_id", chain_id.into()); // Moonbase
+    payload.insert("chain_id", chain_id.into());
 
     let client = reqwest::Client::new();
     let res = client.post(url).json(&payload).send().await.unwrap();

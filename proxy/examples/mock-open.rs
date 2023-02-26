@@ -35,11 +35,13 @@ async fn main() -> Result<(), Error> {
     std::env::set_var("RUST_LOG", "info");
     tracing_subscriber::fmt::init();
 
+    let network = Network::Testnet;
+
     if let Some(subcommand) = args().nth(1) {
         match subcommand.as_str() {
             "show-templates" => {
                 let (client, _, _) = init_client(ACCOUNT).await;
-                let plan_contract = plan_manager(client.clone(), Network::Moonbase).unwrap();
+                let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
                     .method::<_, U256>("planTemplateIds", ())
                     .unwrap()
@@ -71,7 +73,7 @@ async fn main() -> Result<(), Error> {
                 let indexer: Address = args().nth(2).unwrap().parse().unwrap();
 
                 let (client, _, _) = init_client(ACCOUNT).await;
-                let plan_contract = plan_manager(client.clone(), Network::Moonbase).unwrap();
+                let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
                     .method::<_, U256>("nextPlanId", (indexer,))
                     .unwrap()
@@ -112,8 +114,7 @@ async fn main() -> Result<(), Error> {
                 let indexer: Address = args().nth(2).unwrap().parse().unwrap();
 
                 let (client, _, _) = init_client(ACCOUNT).await;
-                let contract =
-                    service_agreement_registry(client.clone(), Network::Moonbase).unwrap();
+                let contract = service_agreement_registry(client.clone(), network).unwrap();
                 println!("Service agreement contract: {:?}", contract.address());
                 let result: U256 = contract
                     .method::<_, U256>("indexerCsaLength", (indexer,))
@@ -153,7 +154,7 @@ async fn main() -> Result<(), Error> {
                 println!("price: {} template: {}", price, template);
 
                 let (client, gas_price, _) = init_client(&args().nth(2).unwrap()).await;
-                let contract = plan_manager(client.clone(), Network::Moonbase).unwrap();
+                let contract = plan_manager(client.clone(), network).unwrap();
                 println!("Plan contract: {:?}", contract.address());
 
                 let tx = contract
@@ -179,11 +180,11 @@ async fn main() -> Result<(), Error> {
                 };
 
                 let (client, gas_price, _) = init_client(&args().nth(2).unwrap()).await;
-                let contract = plan_manager(client.clone(), Network::Moonbase).unwrap();
+                let contract = plan_manager(client.clone(), network).unwrap();
                 println!("Plan contract: {:?}", contract.address());
 
                 if need_allowance {
-                    let sqtoken = sqtoken(client, Network::Moonbase).unwrap();
+                    let sqtoken = sqtoken(client, network).unwrap();
                     let amount: U256 = U256::from(100) * U256::from(1000000000000000000u64); // 18-decimal
                     let tx = sqtoken
                         .method::<_, ()>("increaseAllowance", (contract.address(), amount))

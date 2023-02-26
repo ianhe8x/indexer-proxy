@@ -49,10 +49,15 @@ async fn sync_send(method: &str, params: Vec<RpcParam>, gid: GroupId) -> std::io
     }
 }
 
-pub async fn test_close_agreement(consumer: Address, indexer: Address, controller: Address) {
+pub async fn test_close_agreement(
+    consumer: Address,
+    indexer: Address,
+    controller: Address,
+    network: Network,
+) {
     let endpoint = std::env::var("ENDPOINT_HTTP").unwrap_or(ENDPOINT.to_owned());
     let provider = Provider::<Http>::try_from(endpoint).unwrap();
-    let contract = service_agreement_registry(provider, Network::Moonbase).unwrap();
+    let contract = service_agreement_registry(provider, network).unwrap();
     println!("Service agreement contract: {:?}", contract.address());
     let result: U256 = contract
         .method::<_, U256>("indexerCsaLength", (indexer,))
@@ -131,6 +136,8 @@ async fn main() -> std::io::Result<()> {
     let controller: Address = args().nth(3).unwrap().parse().unwrap();
     let controller_addr: SocketAddr = args().nth(4).unwrap().parse().unwrap();
 
+    let network = Network::Testnet;
+
     // start new network
     let (out_send, mut out_recv, inner_send, inner_recv) = channel_rpc_channel();
     let mut senders = P2P_SENDER.write().await;
@@ -168,7 +175,7 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(async move {
         println!("Waiting 5s will auto run close agreement test");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        test_close_agreement(consumer, indexer, controller).await;
+        test_close_agreement(consumer, indexer, controller, network).await;
     });
 
     bootstrap(&send, vec![controller_addr]).await;
