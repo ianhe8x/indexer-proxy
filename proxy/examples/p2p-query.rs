@@ -27,7 +27,6 @@ use tdn::{
 };
 use tokio::sync::{mpsc::Sender, RwLock};
 
-const ENDPOINT: &str = "https://moonbeam-alpha.api.onfinality.io/public";
 static P2P_SENDER: Lazy<RwLock<Vec<ChannelRpcSender>>> = Lazy::new(|| RwLock::new(vec![]));
 
 async fn send(method: &str, params: Vec<RpcParam>, gid: GroupId) {
@@ -55,8 +54,9 @@ pub async fn test_close_agreement(
     controller: Address,
     network: Network,
 ) {
-    let endpoint = std::env::var("ENDPOINT_HTTP").unwrap_or(ENDPOINT.to_owned());
-    let provider = Provider::<Http>::try_from(endpoint).unwrap();
+    let default_endpoint = network.config().rpc_urls[0].clone();
+    let endpoint = std::env::var("ENDPOINT_HTTP").unwrap_or(default_endpoint);
+    let provider = Arc::new(Provider::<Http>::try_from(endpoint).unwrap());
     let contract = service_agreement_registry(provider, network).unwrap();
     println!("Service agreement contract: {:?}", contract.address());
     let result: U256 = contract

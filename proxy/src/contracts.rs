@@ -21,6 +21,7 @@ use ethers::{
     providers::{Http, Provider},
     types::{Address, U256},
 };
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use subql_contracts::{
     consumer_host, consumer_host_parse, plan_manager, service_agreement_registry,
@@ -34,8 +35,10 @@ pub async fn check_agreement_and_consumer(
     signer: &str,
     aid: &str,
 ) -> Result<(bool, u64, u64), Error> {
-    let client = Provider::<Http>::try_from(COMMAND.network_endpoint())
-        .map_err(|_| Error::ServiceException(1022))?;
+    let client = Arc::new(
+        Provider::<Http>::try_from(COMMAND.network_endpoint())
+            .map_err(|_| Error::ServiceException(1022))?,
+    );
 
     let plan = plan_manager(client.clone(), COMMAND.network())
         .map_err(|_| Error::ServiceException(1023))?;
@@ -142,8 +145,10 @@ pub async fn check_state_channel_consumer(
         consumer_host_parse(COMMAND.network()).map_err(|_| Error::ServiceException(1023))?;
 
     if contract == consumer {
-        let client = Provider::<Http>::try_from(COMMAND.network_endpoint())
-            .map_err(|_| Error::ServiceException(1022))?;
+        let client = Arc::new(
+            Provider::<Http>::try_from(COMMAND.network_endpoint())
+                .map_err(|_| Error::ServiceException(1022))?,
+        );
         let host =
             consumer_host(client, COMMAND.network()).map_err(|_| Error::ServiceException(1023))?;
 

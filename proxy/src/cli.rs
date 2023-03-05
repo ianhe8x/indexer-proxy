@@ -84,13 +84,10 @@ pub struct CommandLineArgs {
     #[structopt(short = "j", long = "jwt-secret")]
     pub jwt_secret: String,
     /// Blockchain network type
-    #[structopt(long = "network", default_value = "testnet")]
+    #[structopt(long = "network", default_value = "")]
     pub network: String,
     /// Blockchain network endpoint
-    #[structopt(
-        long = "network-endpoint",
-        default_value = "https://moonbeam-alpha.api.onfinality.io/public"
-    )]
+    #[structopt(long = "network-endpoint", default_value = "")]
     pub network_endpoint: String,
     /// Redis client address
     #[structopt(long = "redis-endpoint", default_value = "redis://127.0.0.1/")]
@@ -163,8 +160,14 @@ impl CommandLineArgs {
         &self.jwt_secret
     }
 
-    pub fn network_endpoint(&self) -> &str {
-        &self.network_endpoint
+    pub fn network_endpoint(&self) -> String {
+        let current_endpoint = self.network_endpoint.trim();
+        if current_endpoint.is_empty() {
+            let network = self.network();
+            network.config().rpc_urls[0].clone()
+        } else {
+            current_endpoint.to_owned()
+        }
     }
 
     pub fn network(&self) -> Network {

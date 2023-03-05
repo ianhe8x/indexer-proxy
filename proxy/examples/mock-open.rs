@@ -3,6 +3,7 @@ use ethers::{
     prelude::*,
 };
 use std::env::args;
+use std::sync::Arc;
 use subql_contracts::{plan_manager, service_agreement_registry, sqtoken, Network};
 use subql_utils::{
     error::Error,
@@ -12,10 +13,17 @@ use subql_utils::{
 // Hardhat default account. just for padding when account missing.
 const ACCOUNT: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const GAS_PRICE: u64 = 1_000_000_000;
-const ENDPOINT: &str = "https://moonbeam-alpha.api.onfinality.io/public";
 
-async fn init_client(sk: &str) -> (SignerMiddleware<Provider<Http>, LocalWallet>, U256, Address) {
-    let endpoint = std::env::var("ENDPOINT_HTTP").unwrap_or(ENDPOINT.to_owned());
+async fn init_client(
+    sk: &str,
+    network: Network,
+) -> (
+    Arc<SignerMiddleware<Provider<Http>, LocalWallet>>,
+    U256,
+    Address,
+) {
+    let default_endpoint = network.config().rpc_urls[0].clone();
+    let endpoint = std::env::var("ENDPOINT_HTTP").unwrap_or(default_endpoint);
     let account = sk.parse::<LocalWallet>().unwrap();
     let address = account.address();
     let provider = Provider::<Http>::try_from(endpoint)
@@ -27,7 +35,7 @@ async fn init_client(sk: &str) -> (SignerMiddleware<Provider<Http>, LocalWallet>
     let client = SignerMiddleware::new_with_provider_chain(provider, account)
         .await
         .unwrap();
-    (client, gas_price, address)
+    (Arc::new(client), gas_price, address)
 }
 
 #[tokio::main]
@@ -40,7 +48,7 @@ async fn main() -> Result<(), Error> {
     if let Some(subcommand) = args().nth(1) {
         match subcommand.as_str() {
             "show-templates" => {
-                let (client, _, _) = init_client(ACCOUNT).await;
+                let (client, _, _) = init_client(ACCOUNT, network).await;
                 let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
                     .method::<_, U256>("planTemplateIds", ())
@@ -72,7 +80,7 @@ async fn main() -> Result<(), Error> {
                 }
                 let indexer: Address = args().nth(2).unwrap().parse().unwrap();
 
-                let (client, _, _) = init_client(ACCOUNT).await;
+                let (client, _, _) = init_client(ACCOUNT, network).await;
                 let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
                     .method::<_, U256>("nextPlanId", (indexer,))
@@ -113,7 +121,7 @@ async fn main() -> Result<(), Error> {
                 }
                 let indexer: Address = args().nth(2).unwrap().parse().unwrap();
 
-                let (client, _, _) = init_client(ACCOUNT).await;
+                let (client, _, _) = init_client(ACCOUNT, network).await;
                 let contract = service_agreement_registry(client.clone(), network).unwrap();
                 println!("Service agreement contract: {:?}", contract.address());
                 let result: U256 = contract
@@ -153,7 +161,7 @@ async fn main() -> Result<(), Error> {
                 let deployment = cid_deployment(&args().nth(5).unwrap());
                 println!("price: {} template: {}", price, template);
 
-                let (client, gas_price, _) = init_client(&args().nth(2).unwrap()).await;
+                let (client, gas_price, _) = init_client(&args().nth(2).unwrap(), network).await;
                 let contract = plan_manager(client.clone(), network).unwrap();
                 println!("Plan contract: {:?}", contract.address());
 
@@ -179,7 +187,7 @@ async fn main() -> Result<(), Error> {
                     false
                 };
 
-                let (client, gas_price, _) = init_client(&args().nth(2).unwrap()).await;
+                let (client, gas_price, _) = init_client(&args().nth(2).unwrap(), network).await;
                 let contract = plan_manager(client.clone(), network).unwrap();
                 println!("Plan contract: {:?}", contract.address());
 
