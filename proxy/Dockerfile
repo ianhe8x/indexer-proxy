@@ -33,6 +33,7 @@ WORKDIR /subql
 
 RUN git clone https://github.com/subquery/indexer-proxy.git .
 
+RUN cargo update
 RUN cargo build --release
 
 # Final image
