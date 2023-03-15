@@ -24,6 +24,7 @@ use std::sync::Arc;
 use subql_utils::{
     error::Error,
     p2p::{Event, JoinData, ROOT_GROUP_ID, ROOT_NAME},
+    request::GraphQLQuery,
 };
 use tdn::{
     prelude::{
@@ -341,9 +342,11 @@ async fn handle_group(
     ledger: Arc<RwLock<Ledger>>,
 ) -> Result<HandleResult> {
     let mut results = HandleResult::new();
-    if !ledger.read().await.groups.contains_key(&gid) {
+    let project = if let Some((project, _)) = ledger.read().await.groups.get(&gid) {
+        project.to_owned()
+    } else {
         return Ok(results);
-    }
+    };
 
     match msg {
         RecvType::Connect(peer, bytes) => {
@@ -441,18 +444,12 @@ async fn handle_group(
                     results.groups.push((gid, msg));
                 }
                 Event::PaygQuery(uid, query, state) => {
-                    let query: RpcParam = serde_json::from_str(&query)?;
+                    let query: GraphQLQuery = serde_json::from_str(&query)?;
                     let state: RpcParam = serde_json::from_str(&state)?;
-                    let (res_data, res_state) =
-                        if query.get("project").is_none() || query.get("query").is_none() {
-                            (json!({"code": 1047, "error": "Invalid Request"}), state)
-                        } else {
-                            let project = query["project"].as_str().unwrap();
-                            match query_state(project, &query.to_string(), &state).await {
-                                Ok((res_query, res_state)) => (res_query, res_state),
-                                Err(err) => (err.to_json(), state),
-                            }
-                        };
+                    let (res_data, res_state) = match query_state(&project, &query, &state).await {
+                        Ok((res_query, res_state)) => (res_query, res_state),
+                        Err(err) => (err.to_json(), state),
+                    };
 
                     let e = Event::PaygQueryRes(
                         uid,
@@ -473,12 +470,13 @@ async fn handle_group(
                     let msg = SendType::Event(0, peer_id, e.to_bytes());
                     results.groups.push((gid, msg));
                 }
-                Event::CloseAgreementQuery(uid, agreement, project, query) => {
+                Event::CloseAgreementQuery(uid, agreement, query) => {
+                    let raw_query = serde_json::from_str(&query)?;
                     let res = match handle_close_agreement_query(
                         &peer_id.to_hex(),
                         &agreement,
                         &project,
-                        &query,
+                        &raw_query,
                     )
                     .await
                     {
@@ -544,8 +542,9 @@ async fn handle_close_agreement_query(
     signer: &str,
     agreement: &str,
     project: &str,
-    query: &str,
+    query: &GraphQLQuery,
 ) -> std::result::Result<RpcParam, Error> {
     check_and_save_agreement(signer, &agreement).await?;
+
     project_query(project, query).await
 }

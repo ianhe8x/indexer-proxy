@@ -41,16 +41,26 @@ pub struct GraphQLQuery {
     pub variables: Option<Value>,
     /// The GraphQL operation name, as a string.
     #[serde(rename = "operationName")]
-    pub operation_name: Option<String>,
+    pub operation_name: Option<Value>,
+}
+
+impl GraphQLQuery {
+    pub fn query(query: &str) -> Self {
+        GraphQLQuery {
+            query: query.to_owned(),
+            variables: None,
+            operation_name: None,
+        }
+    }
 }
 
 // Request to graphql service.
-pub async fn graphql_request(uri: &str, query: &str) -> Result<Value, Error> {
+pub async fn graphql_request(uri: &str, query: &GraphQLQuery) -> Result<Value, Error> {
     let response_result = REQUEST_CLIENT
         .post(uri)
         .header(CONTENT_TYPE, APPLICATION_JSON)
         .header(CONNECTION, KEEP_ALIVE)
-        .body(query.to_string())
+        .body(serde_json::to_string(query).unwrap_or("".to_owned()))
         .send()
         .await;
 

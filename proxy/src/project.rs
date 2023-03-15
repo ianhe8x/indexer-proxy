@@ -22,7 +22,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use subql_utils::{error::Error, query::METADATA_QUERY, request::graphql_request, types::Result};
+use subql_utils::{
+    error::Error,
+    query::METADATA_QUERY,
+    request::{graphql_request, GraphQLQuery},
+    types::Result,
+};
 use tdn::types::group::hash_to_group_id;
 
 use crate::cli::COMMAND;
@@ -132,8 +137,10 @@ pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
 pub async fn init_projects() {
     // graphql query for getting alive projects
     let url = COMMAND.graphql_url();
-    let query = json!({ "query": "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }" });
-    let value = graphql_request(&url, &query.to_string()).await.unwrap(); // init need unwrap
+    let query = GraphQLQuery::query(
+        "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }",
+    );
+    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
 
     if let Some(items) = value.pointer("/data/getAliveProjects") {
         if let Some(projects) = items.as_array() {
@@ -146,11 +153,11 @@ pub async fn init_projects() {
 
 pub async fn project_metadata(id: &str) -> Result<Value> {
     let project = get_project(id)?;
-    let query = json!({ "query": METADATA_QUERY }).to_string();
+    let query = GraphQLQuery::query(METADATA_QUERY);
     graphql_request(&project.query_endpoint, &query).await
 }
 
-pub async fn project_query(id: &str, query: &str) -> Result<Value> {
+pub async fn project_query(id: &str, query: &GraphQLQuery) -> Result<Value> {
     let project = get_project(id)?;
     crate::prometheus::push_query_metrics(id.to_owned());
     graphql_request(&project.query_endpoint, query).await

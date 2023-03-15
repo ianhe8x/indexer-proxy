@@ -30,6 +30,7 @@ use subql_utils::{
     constants::HEADERS,
     eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
+    request::GraphQLQuery,
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -150,7 +151,7 @@ pub async fn generate_token(
 pub async fn query_handler(
     AuthQuery(deployment_id): AuthQuery,
     Path(id): Path<String>,
-    Json(query): Json<String>,
+    Json(query): Json<GraphQLQuery>,
 ) -> Result<Json<Value>, Error> {
     if COMMAND.auth() && id != deployment_id {
         return Err(Error::AuthVerify(1004));
@@ -179,7 +180,7 @@ pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Er
 pub async fn payg_handler(
     AuthPayg(state): AuthPayg,
     Path(id): Path<String>,
-    Json(query): Json<String>,
+    Json(query): Json<GraphQLQuery>,
 ) -> Result<Json<Value>, Error> {
     let (query_data, state_data) = query_state(&id, &query, &state).await?;
     prometheus::push_query_metrics(id);

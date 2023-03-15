@@ -45,8 +45,8 @@ pub enum Event {
     /// params: uid, agreement info
     CloseAgreementLimitRes(u64, String),
     /// Query data by close agreement,
-    /// params: uid, agreement, project, query
-    CloseAgreementQuery(u64, String, String, String),
+    /// params: uid, agreement, query
+    CloseAgreementQuery(u64, String, String),
     /// Response the close agreement query,
     /// params: uid, data
     CloseAgreementQueryRes(u64, String),

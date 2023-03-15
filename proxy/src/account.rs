@@ -21,8 +21,12 @@ use ethers::{
     types::Address,
 };
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
-use subql_utils::{error::Error, request::graphql_request, types::Result};
+use serde_json::Value;
+use subql_utils::{
+    error::Error,
+    request::{graphql_request, GraphQLQuery},
+    types::Result,
+};
 use tdn::prelude::PeerKey;
 use tokio::sync::RwLock;
 
@@ -130,8 +134,8 @@ pub async fn handle_account(value: &Value) -> Result<()> {
 
 pub async fn init_account() {
     let url = COMMAND.graphql_url();
-    let query = json!({"query": "query { accountMetadata { indexer controller } }" });
-    let value = graphql_request(&url, &query.to_string()).await.unwrap();
+    let query = GraphQLQuery::query("query { accountMetadata { indexer controller } }");
+    let value = graphql_request(&url, &query).await.unwrap();
 
     if let Some(value) = value.pointer("/data/accountMetadata") {
         handle_account(value).await.unwrap(); // init need unwrap if has error.

@@ -112,12 +112,15 @@ pub async fn test_close_agreement(
     let params = vec![
         json!(format!("{:?}", controller)),
         json!(agreement),
-        json!(deployment),
         json!(query.to_string()),
     ];
-    let res = sync_send("project-query", params, ROOT_GROUP_ID)
-        .await
-        .unwrap();
+    let res = sync_send(
+        "project-query",
+        params,
+        hash_to_group_id(deployment.as_bytes()),
+    )
+    .await
+    .unwrap();
     println!("RESPONSE: {}", res);
 
     println!("Auto run close agreement test success");
@@ -269,11 +272,10 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
             let uid = params[0].as_u64().ok_or(RpcError::ParseError)?;
             let remote = params[1].as_str().ok_or(RpcError::ParseError)?;
             let agreement = params[2].as_str().ok_or(RpcError::ParseError)?.to_owned();
-            let project = params[3].as_str().ok_or(RpcError::ParseError)?.to_owned();
-            let query = params[4].as_str().ok_or(RpcError::ParseError)?.to_owned();
+            let query = params[3].as_str().ok_or(RpcError::ParseError)?.to_owned();
             let pid = PeerId::from_hex(remote)?;
 
-            let data = Event::CloseAgreementQuery(uid, agreement, project, query).to_bytes();
+            let data = Event::CloseAgreementQuery(uid, agreement, query).to_bytes();
             Ok(HandleResult::group(
                 gid,
                 SendType::Event(0, pid, data.clone()),

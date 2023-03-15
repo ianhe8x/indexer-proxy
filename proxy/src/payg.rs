@@ -34,7 +34,7 @@ use serde_json::{json, Value};
 use subql_utils::{
     error::Error,
     payg::{convert_sign_to_string, OpenState, QueryState},
-    request::graphql_request,
+    request::{graphql_request, GraphQLQuery},
     tools::deployment_cid,
     types::Result,
 };
@@ -234,8 +234,8 @@ pub async fn open_state(body: &Value) -> Result<Value> {
     );
     tokio::spawn(async move {
         let url = COMMAND.graphql_url();
-        let query = json!({ "query": mdata });
-        let _ = graphql_request(&url, &query.to_string())
+        let query = GraphQLQuery::query(&mdata);
+        let _ = graphql_request(&url, &query)
             .await
             .map_err(|e| error!("{:?}", e));
     });
@@ -244,7 +244,11 @@ pub async fn open_state(body: &Value) -> Result<Value> {
     Ok(state.to_json())
 }
 
-pub async fn query_state(project: &str, query: &str, state: &Value) -> Result<(Value, Value)> {
+pub async fn query_state(
+    project: &str,
+    query: &GraphQLQuery,
+    state: &Value,
+) -> Result<(Value, Value)> {
     let project = get_project(project)?;
     let mut state = QueryState::from_json(state)?;
 
@@ -349,8 +353,8 @@ pub async fn query_state(project: &str, query: &str, state: &Value) -> Result<(V
     tokio::spawn(async move {
         // query the state.
         let url = COMMAND.graphql_url();
-        let query = json!({ "query": mdata });
-        let _ = graphql_request(&url, &query.to_string())
+        let query = GraphQLQuery::query(&mdata);
+        let _ = graphql_request(&url, &query)
             .await
             .map_err(|e| error!("{:?}", e));
     });
@@ -440,8 +444,10 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 
 pub async fn init_channels() {
     let url = COMMAND.graphql_url();
-    let query = json!({ "query": "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }" });
-    let value = graphql_request(&url, &query.to_string()).await.unwrap(); // init need unwrap
+    let query = GraphQLQuery::query(
+        "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }",
+    );
+    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
 
     if let Some(items) = value.pointer("/data/getAliveChannels") {
         if let Some(channels) = items.as_array() {
