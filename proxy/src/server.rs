@@ -30,7 +30,7 @@ use subql_utils::{
     constants::HEADERS,
     eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
-    request::GraphQLQuery,
+    request::{graphql_request, GraphQLQuery},
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -67,6 +67,8 @@ pub async fn start_server(host: &str, port: u16) {
         // `Get /metadata/123` goes to query the metadata (indexer, controller, payg-price).
         .route("/metadata/:id", get(metadata_handler))
         .route("/healthy", get(healthy_handler))
+        // `Get /poi/123` goes to query the poi
+        .route("/poi/:block", get(poi_handler))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -189,6 +191,22 @@ pub async fn payg_handler(
 
 pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
     let res = project_metadata(&id).await?;
+    Ok(Json(res))
+}
+
+pub async fn poi_handler(Path(block): Path<String>) -> Result<Json<Value>, Error> {
+    let url = COMMAND.graphql_url();
+    let poi_query = format!(
+        r#"{{
+            _poiByChainBlockHash(
+                chainBlockHash:"{}",
+            )
+           {{ nodeId, id, chainBlockHash, hash, parentHash, operationHashRoot, mmrRoot, projectId, createdAt, updatedAt}}
+        }}"#,
+        &block
+    );
+    let query = GraphQLQuery::query(&poi_query);
+    let res = graphql_request(&url, &query).await?;
     Ok(Json(res))
 }
 
