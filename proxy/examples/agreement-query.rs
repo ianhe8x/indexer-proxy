@@ -8,7 +8,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::env::args;
 use subql_contracts::CURRENT_NETWORK;
 
-fn payload_712(indexer: &str, deployment_id: &str, timestamp: i64, chain_id: i64) -> [u8; 32] {
+fn payload_712(
+    consumer: &str,
+    indexer: &str,
+    deployment_id: &str,
+    agreement: &str,
+    timestamp: i64,
+    chain_id: i64,
+) -> [u8; 32] {
     let mut types = BTreeMap::new();
     types.insert(
         "EIP712Domain".to_owned(),
@@ -27,8 +34,16 @@ fn payload_712(indexer: &str, deployment_id: &str, timestamp: i64, chain_id: i64
         "messageType".to_owned(),
         vec![
             Eip712DomainType {
+                name: "consumer".to_owned(),
+                r#type: "address".to_owned(),
+            },
+            Eip712DomainType {
                 name: "indexer".to_owned(),
                 r#type: "address".to_owned(),
+            },
+            Eip712DomainType {
+                name: "agreement".to_owned(),
+                r#type: "string".to_owned(),
             },
             Eip712DomainType {
                 name: "timestamp".to_owned(),
@@ -42,7 +57,9 @@ fn payload_712(indexer: &str, deployment_id: &str, timestamp: i64, chain_id: i64
     );
     let mut message = BTreeMap::new();
     message.insert("indexer".to_owned(), indexer.into());
+    message.insert("consumer".to_owned(), consumer.into());
     message.insert("timestamp".to_owned(), timestamp.into());
+    message.insert("agreement".to_owned(), agreement.into());
     message.insert("deploymentId".to_owned(), deployment_id.into());
 
     let type_data = TypedData {
@@ -63,7 +80,7 @@ fn payload_712(indexer: &str, deployment_id: &str, timestamp: i64, chain_id: i64
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     if args().len() != 5 {
-        println!("cargo run --example agreement-query url indexer deployment CONSUMERSKXXX");
+        println!("cargo run --example free-query url indexer deployment CONSUMERSKXXX");
         return Ok(());
     }
 
@@ -75,7 +92,7 @@ async fn main() -> std::io::Result<()> {
 
     let timestamp = Utc::now().timestamp_millis();
     let chain_id = CURRENT_NETWORK.config().chain_id as i64;
-    let msg = payload_712(&indexer, &deployment, timestamp, chain_id);
+    let msg = payload_712(&consumer, &indexer, &deployment, "9", timestamp, chain_id);
     let sign = hex::encode(signer.sign_hash(msg.into()).to_vec());
 
     let mut payload = HashMap::new();
@@ -85,6 +102,7 @@ async fn main() -> std::io::Result<()> {
     payload.insert("signature", Value::String(sign));
     payload.insert("timestamp", timestamp.into());
     payload.insert("chain_id", chain_id.into());
+    payload.insert("agreement", Value::String("9".to_owned()));
 
     let client = reqwest::Client::new();
     let res = client.post(url).json(&payload).send().await.unwrap();

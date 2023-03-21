@@ -173,3 +173,26 @@ pub fn recover_consumer_token_payload(
         .map_err(|_| Error::InvalidSignature(1040))?;
     Ok(format!("{:02x?}", address))
 }
+
+#[test]
+fn test_recover() {
+    let agreement = "11";
+    let chain_id = 80001;
+    let consumer = "0x58C67330ab1b9A26897E5357EE4d92E6eF631Bb4";
+    let deployment_id = "QmSjjRjfjXXEfSUTheNwvWcBaH54pWoToTHPDsJRby955X";
+    let indexer = "0xCef192586b70e3Fc2FAD76Dd1D77983a30d38D04";
+    let signature = "6b8c92cf933971345e0b0ba958a1f6412f2803e9a1a0bdb37301ebf45ce7d12146b8b6eb2e17beebfc54194d4ade58c923729887adbd84370c9e4bf87fe54c9c1b";
+    let timestamp = 1678332289052;
+
+    let signer = recover_consumer_token_payload(
+        consumer,
+        indexer,
+        agreement,
+        deployment_id,
+        timestamp,
+        chain_id,
+        signature,
+    )
+    .unwrap();
+    assert_eq!(signer.to_lowercase(), consumer.to_lowercase());
+}

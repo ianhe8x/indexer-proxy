@@ -17,10 +17,13 @@ pub enum Event {
     ProjectJoinRes,
     /// Project leave
     ProjectLeave,
-    /// Report project healthy
+    /// Report project healthy,
     /// params: metadata
     ProjectHealthy(String),
-    /// Request the project info
+    /// Report project query log to whitelist use root group id,
+    /// params: indexer, [project, metrics log in previous 1h]
+    ProjectMetrics(String, Vec<(String, u64)>),
+    /// Request the project info,
     /// params: project
     ProjectInfo(Option<String>),
     /// Response project price and info,

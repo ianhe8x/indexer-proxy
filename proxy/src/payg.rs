@@ -42,6 +42,7 @@ use subql_utils::{
 use crate::account::ACCOUNT;
 use crate::cli::{redis, COMMAND};
 use crate::contracts::check_state_channel_consumer;
+use crate::metrics::add_metrics_query;
 use crate::project::{get_project, list_projects};
 
 struct StateCache {
@@ -245,11 +246,11 @@ pub async fn open_state(body: &Value) -> Result<Value> {
 }
 
 pub async fn query_state(
-    project: &str,
+    project_id: &str,
     query: &GraphQLQuery,
     state: &Value,
 ) -> Result<(Value, Value)> {
-    let project = get_project(project)?;
+    let project = get_project(project_id)?;
     let mut state = QueryState::from_json(state)?;
 
     let account = ACCOUNT.read().await;
@@ -316,6 +317,7 @@ pub async fn query_state(
             Err(Error::InvalidRequest(1046))
         }
     }?;
+    add_metrics_query(project_id.to_owned());
 
     state_cache.spent = local_prev + remote_next - remote_prev;
     state_cache.remote = remote_next;

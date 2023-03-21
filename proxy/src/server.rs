@@ -34,11 +34,12 @@ use subql_utils::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::account::get_indexer;
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
+use crate::cli::COMMAND;
 use crate::contracts::check_agreement_and_consumer;
 use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::{get_project, project_metadata, project_query};
-use crate::{account, cli::COMMAND, prometheus};
 
 #[derive(Serialize)]
 pub struct QueryUri {
@@ -66,6 +67,7 @@ pub async fn start_server(host: &str, port: u16) {
         .route("/payg/:id", post(payg_handler))
         // `Get /metadata/123` goes to query the metadata (indexer, controller, payg-price).
         .route("/metadata/:id", get(metadata_handler))
+        // `Get /healthy` goes to query the service in running success (response the indexer)
         .route("/healthy", get(healthy_handler))
         // `Get /poi/123` goes to query the poi
         .route("/poi/:block", get(poi_handler))
@@ -90,7 +92,7 @@ pub async fn generate_token(
     Json(payload): Json<Payload>,
 ) -> Result<Json<Value>, Error> {
     get_project(&payload.deployment_id)?;
-    let indexer = account::get_indexer().await;
+    let indexer = get_indexer().await;
     if indexer.to_lowercase() != payload.indexer.to_lowercase() {
         return Err(Error::AuthCreate(1002));
     }
@@ -185,7 +187,6 @@ pub async fn payg_handler(
     Json(query): Json<GraphQLQuery>,
 ) -> Result<Json<Value>, Error> {
     let (query_data, state_data) = query_state(&id, &query, &state).await?;
-    prometheus::push_query_metrics(id);
     Ok(Json(json!([query_data, state_data])))
 }
 
@@ -211,6 +212,6 @@ pub async fn poi_handler(Path(block): Path<String>) -> Result<Json<Value>, Error
 }
 
 pub async fn healthy_handler() -> Result<Json<Value>, Error> {
-    let indexer = account::get_indexer().await;
+    let indexer = get_indexer().await;
     Ok(Json(json!({ "indexer": indexer })))
 }

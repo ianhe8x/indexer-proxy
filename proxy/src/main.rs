@@ -24,11 +24,11 @@ mod account;
 mod auth;
 mod cli;
 mod contracts;
+mod metrics;
 mod monitor;
 mod p2p;
 mod payg;
 mod project;
-mod prometheus;
 mod server;
 mod subscriber;
 

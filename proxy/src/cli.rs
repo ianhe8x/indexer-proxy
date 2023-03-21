@@ -23,6 +23,7 @@ use std::net::SocketAddr;
 use structopt::StructOpt;
 use subql_contracts::Network;
 use subql_utils::error::Error;
+use tdn::prelude::PeerId;
 use tokio::sync::{Mutex, OnceCell};
 
 const DEFAULT_P2P_ADDR: &str = "0.0.0.0:7370";
@@ -74,9 +75,6 @@ pub struct CommandLineArgs {
     /// Enable debug mode
     #[structopt(short = "d", long = "debug")]
     pub debug: bool,
-    /// Enable dev mode
-    #[structopt(long = "dev")]
-    pub dev: bool,
     /// port of p2p network.
     #[structopt(long = "p2p-port")]
     pub p2p_port: Option<u16>,
@@ -98,6 +96,12 @@ pub struct CommandLineArgs {
     /// Free query for consumer limit everyday
     #[structopt(long = "free-plan", default_value = "60")]
     pub free_limit: u64,
+    /// AllowList to report metrics
+    #[structopt(long = "metrics-allowlist", default_value = "")]
+    pub metrics_allowlist: String,
+    /// The prometheus endpoint to report indexer's query status
+    #[structopt(long = "prometheus-endpoint")]
+    pub prometheus_endpoint: Option<String>,
 }
 
 impl CommandLineArgs {
@@ -140,10 +144,6 @@ impl CommandLineArgs {
         self.auth
     }
 
-    pub fn dev(&self) -> bool {
-        self.dev
-    }
-
     pub fn token_duration(&self) -> i64 {
         self.token_duration
     }
@@ -180,5 +180,12 @@ impl CommandLineArgs {
 
     pub fn bootstrap(&self) -> Vec<String> {
         self.bootstrap.clone()
+    }
+
+    pub fn metrics_allowlist(&self) -> Vec<PeerId> {
+        self.metrics_allowlist
+            .split(",")
+            .filter_map(|p| PeerId::from_hex(p.trim()).ok())
+            .collect()
     }
 }

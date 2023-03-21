@@ -31,6 +31,7 @@ use subql_utils::{
 use tdn::types::group::hash_to_group_id;
 
 use crate::cli::COMMAND;
+use crate::metrics::add_metrics_query;
 use crate::p2p::send;
 use crate::payg::merket_price;
 
@@ -159,6 +160,6 @@ pub async fn project_metadata(id: &str) -> Result<Value> {
 
 pub async fn project_query(id: &str, query: &GraphQLQuery) -> Result<Value> {
     let project = get_project(id)?;
-    crate::prometheus::push_query_metrics(id.to_owned());
+    add_metrics_query(id.to_owned());
     graphql_request(&project.query_endpoint, query).await
 }

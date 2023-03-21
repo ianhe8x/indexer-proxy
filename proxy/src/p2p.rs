@@ -40,10 +40,14 @@ use tdn::{
 };
 use tokio::sync::{mpsc::Sender, RwLock};
 
-use crate::auth::{check_and_get_agreement_limit, check_and_save_agreement};
-use crate::cli::COMMAND;
-use crate::payg::{merket_price, open_state, query_state};
-use crate::project::{project_metadata, project_query};
+use crate::{
+    account::get_indexer,
+    auth::{check_and_get_agreement_limit, check_and_save_agreement},
+    cli::COMMAND,
+    metrics::get_timer_metrics,
+    payg::{merket_price, open_state, query_state},
+    project::{project_metadata, project_query},
+};
 
 pub static P2P_SENDER: Lazy<RwLock<Vec<ChannelRpcSender>>> = Lazy::new(|| RwLock::new(vec![]));
 
@@ -66,7 +70,7 @@ pub async fn stop_network() {
     }
 }
 
-pub async fn report_healthy() {
+async fn report_healthy() {
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(600)).await;
         let senders = P2P_SENDER.read().await;
@@ -76,6 +80,22 @@ pub async fn report_healthy() {
             debug!("Report projects healthy");
             senders[0]
                 .send(rpc_request(0, "project-report-healthy", vec![], 0))
+                .await;
+        }
+        drop(senders);
+    }
+}
+
+async fn report_metrics() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        let senders = P2P_SENDER.read().await;
+        if senders.is_empty() {
+            warn!("NONE NETWORK");
+        } else {
+            debug!("Report projects metrics");
+            senders[0]
+                .send(rpc_request(0, "project-report-metrics", vec![], 0))
                 .await;
         }
         drop(senders);
@@ -97,6 +117,7 @@ pub async fn start_network(key: PeerKey) {
         }
     });
     tokio::spawn(report_healthy());
+    tokio::spawn(report_metrics());
 
     let mut config = Config::default();
     config.only_stable_data = true;
@@ -309,6 +330,23 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
             Ok(results)
         },
     );
+
+    rpc_handler.add_method("project-report-metrics", |_, _, _| async move {
+        let mut results = HandleResult::new();
+
+        let metrics = get_timer_metrics().await;
+        if !metrics.is_empty() {
+            let indexer = get_indexer().await;
+            let event = Event::ProjectMetrics(indexer, metrics).to_bytes();
+            for peer in COMMAND.metrics_allowlist() {
+                results
+                    .groups
+                    .push((ROOT_GROUP_ID, SendType::Event(0, peer, event.clone())));
+            }
+        }
+
+        Ok(results)
+    });
 
     rpc_handler.add_method(
         "project-broadcast-payg",
