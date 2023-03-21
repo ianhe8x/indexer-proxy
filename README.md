@@ -2,20 +2,20 @@
 
 ## Run Locally
 
-### Start `coordinator service`
+### Start dependent services
 
-- `yarn start:db`
-- `yarn start:testnet`
+- In [coordinator service](https://github.com/subquery/indexer-coordinator), run `yarn start`
+- Enter ./proxy, and run `docker-compose up`
 
-### Start `proxy server`
+### Start proxy service
 
-- `cargo build`
-- `./target/debug/indexer-proxy --secret-key your-key-same-with-coordinator --jwt_secret randomkey`
+- `cargo run -- --jwt-secret randomkey --secret-key your-key-same-with-coordinator ` with `debug` mode.
 
-### Output help menu
+If you want to run with `production` mode, use official [indexer services](https://github.com/subquery/indexer-services).
+
+### Command
 
 ```sh
-./target/debug/indexer-proxy --help
 Indexer Proxy 0.3.0
 Command line for starting indexer proxy server
 
@@ -25,61 +25,64 @@ USAGE:
 FLAGS:
     -a, --auth       Enable auth
     -d, --debug      Enable debug mode
-        --dev        Enable dev mode
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-        --bootstrap <bootstrap>...               Bootstrap seeds for p2p network with MultiAddr style
-        --endpoint <endpoint>                    Endpoint of this service [default: http://127.0.0.1:80]
-        --host <host>                            IP address for the server [default: 127.0.0.1]
-    -j, --jwt-secret <jwt-secret>                Secret key for generate auth token
-        --network <network>                      Blockchain network type [default: use contracts sdk]
-        --network-endpoint <network-endpoint>    Blockchain network endpoint [default: use contracts sdk]
-        --p2p-port <p2p-port>                    port of p2p network
-    -p, --port <port>                            Port the service will listen on [default: 80]
-        --redis-endpoint <redis-endpoint>        Redis client address [default: redis://127.0.0.1/]
-        --secret-key <secret-key>                Secret key for decrypt key
-        --service-url <service-url>              Coordinator service endpoint [default: http://127.0.0.1:8000]
-        --token-duration <token-duration>        Auth token duration hours [default: 12]
+        --bootstrap <bootstrap>...                     Bootstrap seeds for p2p network with MultiAddr style
+        --endpoint <endpoint>                          Endpoint of this service [default: http://127.0.0.1:80]
+        --free-plan <free-limit>                       Free query for consumer limit everyday [default: 60]
+        --host <host>                                  IP address for the server [default: 127.0.0.1]
+    -j, --jwt-secret <jwt-secret>                      Secret key for generate auth token
+        --metrics-allowlist <metrics-allowlist>        AllowList to report metrics [default: ]
+        --network <network>                            Blockchain network type [default: ]
+        --network-endpoint <network-endpoint>          Blockchain network endpoint [default: ]
+        --p2p-port <p2p-port>                          port of p2p network
+    -p, --port <port>                                  Port the service will listen on [default: 80]
+        --prometheus-endpoint <prometheus-endpoint>    The prometheus endpoint to report indexer's query status
+        --redis-endpoint <redis-endpoint>              Redis client address [default: redis://127.0.0.1/]
+        --secret-key <secret-key>                      Secret key for decrypt key
+        --service-url <service-url>                    Coordinator service endpoint [default: http://127.0.0.1:8000]
+        --token-duration <token-duration>              Auth token duration hours [default: 12]
 ```
 
 ## APIs
+APIs and services provide HTTP and P2P.
 
-### `/token`
+### POST `/token`
 
-```sh
-curl -i -X POST http://127.0.0.1:8003/token \
--H 'Content-Type: application/json' \
--d "{
-  \"user_id\": \"0x7ADb4675B448295b6be86812DDC28F1B0E0Eb876\",
-  \"deployment_id\": \"QmTQTnBTcvv3Eb3M6neDiwuubWVDAoqyAgKmXtTtJKAHoH\",
-  \"signature\": \"923939c849a0116ba95c32661f6c3c706103c8f587177264d62a06aa4b4432bf26b6c1953d4cd67a8635da18c4343e821bb55f03085fff53c73f97aa15893a861b\",
-  \"timestamp\": 1650447316245
-}"
 ```
-
-Response:
-
-```json
-{ 
-  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJ1c2VyIjp7InVzZXJfaWQiOiIweDU5Y2UxODlmZDQwNjExMTYyMDE3ZGViODhkODI2QzM0ODVmNDFlMEQiLCJkZXBsb3ltZW50X2lkIjoiMHg2YzgyMTI0MDhjM2M2MmZjNzhjYmZhOWQ2ZmU1ZmYzOTM0OGMxMDA5MTE0YTYzMTViMWUyMjU2NDU5MTM1MzQ4In0sImV4cCI6MTYzODg0MjA5MH0.4ej2RiEIPvSfKXisKCH2OYvu8WuLKMgKL59KlwpX6XTVUl0h57e63bdJjxxb109JwAGqkCVufKgj8m4OVETiyA"
+Request:
+{
+  "indexer": "...0xAddress...",
+  "consumer": "...0xAddress...",
+  "agreement": "1", // Optional value, if not, use free mode
+  "deployment_id": "...Deployment ID...",
+  "signature": "...Signature hex string...", // EIP712 style signature
+  "timestamp": 1650447316245,
+  "chain_id": 137
 }
-```
-
-### `/metadata/${deployment_id}`
-
-```sh
-curl -i -X GET http://127.0.0.1:8003/metadata/QmaPNri6zia4iNHFSr72QcEWieCtss2KqCBVMXytf3m8yV
-```
 
 Response:
+{
+  "token": "...TOKEN..."
+}
 
-```json
+```
+
+Add this token to `Authorization: Bearer $TOKEN` when query.
+
+### GET `/metadata/${deployment_id}`
+
+```
+Request:
+
+Response:
 {"data":
   {"_metadata":{
     "chain":"Polkadot",
-    "genesisHash":"0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3","indexerHealthy":true,
+    "genesisHash":"0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    "indexerHealthy":true,
     "indexerNodeVersion":"0.29.1",
     "lastProcessedHeight":121743,
     "lastProcessedTimestamp":"1647831789324",
@@ -91,55 +94,46 @@ Response:
 }
 ```
 
-### `/query/${deployment_id}`
+### GET `/healthy`
 
-#### Normal Query
-
-```sh
-export TOKEN="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJ1c2VyIjp7InVzZXJfaWQiOiIweGVlcmZzZGZkc2YiLCJkZXBsb3ltZW50X2lkIjoiMHg2YzgyMTI0MDhjM2M2MmZjNzhjYmZhOWQ2ZmU1ZmYzOTM0OGMxMDA5MTE0YTYzMTViMWUyMjU2NDU5MTM1MzQ4In0sImV4cCI6MTYzODg0MTIyN30.ZUiW_m3Li5eklc1cK5z2VOLVqlv9yPQ9ojHddegSiNKj5eEf8PoTsbzIKhHFkUkRtgArMTiJhmDRT_9L7vCKIg"
-
-export URL="http://127.0.0.1:8003/query/QmTQTnBTcvv3Eb3M6neDiwuubWVDAoqyAgKmXtTtJKAHoH"
-
-
-curl -i -X POST $URL \
--H 'Content-Type: application/json' \
--H "Authorization: Bearer $TOKEN" \
--d "{
-  \"query\": \"query { _metadata { indexerHealthy chain} }\" 
-}"
 ```
+Request:
 
-**Response**:
-
-```json
+Response:
 {
-  "data":{
-    "_metadata": {
-      "chain":"Darwinia",
-      "indexerHealthy":false
-    }
-  }
+  "indexer": "...0xAddress..."
 }
 ```
 
-#### Query with `operation_name` and `variables`
+### Query with API token
 
-```sh
-TIME_COST="\n\n%{time_connect} + %{time_starttransfer} = %{time_total}\n"
+#### POST `/query/${deployment_id}`
 
-curl -w $TIME_COST -i -X POST $URL \
--H 'Content-Type: application/json' \
--H "Authorization: Bearer $TOKEN" \
--d "{ 
-  \"query\": \"query GetAccounts(\$first: Int\!) { accounts (first: \$first) { nodes { id } } }\",
-  \"variables\": { \"first\": 5 },
-  \"operationName\": \"GetAccounts\"
-}"
 ```
+// Normal Query
+Request:
+{
+  "query": "query { _metadata { indexerHealthy chain} }"
+}
 
-**Response**:
+Response:
+{
+  "data":{
+    "_metadata": {
+      "chain":"Polkadot",
+      "indexerHealthy": false
+    }
+  }
+}
 
-```json
+// Query with `operation_name` and `variables`
+Request:
+{
+  "query": "query GetAccounts($first: Int!) { accounts (first: $first) { nodes { id }}}",
+  "variables": {"first": 5},
+  "operationName": "GetAccounts"
+}"
+Response:
 {"data":{
   "accounts":{
     "nodes":[
@@ -148,44 +142,85 @@ curl -w $TIME_COST -i -X POST $URL \
       {"id":"2oakar8GYiNytA4U68kKrfS2qpLfdGPEZjSCUVLYC8izRAGj"},
       {"id":"2oAserkFvEk5p4HMJaqRoDnedjaHzJLNPvyN5JaRLPhn4zpW"},
       {"id":"2oaY38m69Ditx8Rft5kdXPZgtzwuvpx42oFnLBeUyzfa2XfH"}
-    ]}}}
+]}}}
 ```
 
-### Query schema example
-
-```sh
-curl -i -X POST $URL -H 'Content-Type: application/json'  -d "{\"query\": \"{ \
-  __schema { \
-    queryType { \
-      name\
-    }\
-    mutationType { \
-      name\
-    }\
-    subscriptionType { \
-      name \
-    } \
-    types { \
-      kind \
-      name \
-      description \
-    } \
-    directives { \
-      name \
-      description \
-      locations \
-      args { \
-        name \
-        description \
-      } \
-    } \
-  } \
-}\"}"
+#### GET `/query-limit`
 
 ```
+Request:
 
-**Response**:
+Response:
+{
+  "daily_limit": daily_limit,
+  "daily_used": daily_used,
+  "rate_limit": rate_limit,
+  "rate_used": rate_used
+}
+```
 
-```json
-{"data":{"__schema":{"directives":[{"args":[{"description":"Included when true.","name":"if"}],"description":"Directs the executor to include this field or fragment only when the `if` argument is true.","locations":["FIELD","FRAGMENT_SPREAD","INLINE_FRAGMENT"],"name":"include"},{"args":[{"description":"Skipped when true.","name":"if"}],"description":"Directs the executor to skip this field or fragment when the `if` argument is true.","locations":["FIELD","FRAGMENT_SPREAD","INLINE_FRAGMENT"],"name":"skip"}}}},
+### Flex Plan (PAYG)
+Flex plan is a pay-as-you-go payment mode, which is charged by the number of query times.
+
+#### POST `/open`
+
+```
+// Create a new flex plan
+Request:
+{
+  "channel_id": "...1a2b3f...",  // random u256 hex string
+  "indexer": "...0xAddress...",
+  "consumer": "..0xAddress...",
+  "total": "...100...",          // u256 number (no decimal)
+  "price": "...100...",          // u256 number (no decimal)
+  "expiration": "...3600...",    // expiration time
+  "deployment_id": "...Qm...",
+  "callback": "0x1a2b3f...",     // hex data, if not, set ""
+  "indexer_sign": "0x1a2b3f...", // hex data, if not, set ""
+  "consumer_sign": "0x1a2b3f..." // hex_data, if not, set ""
+}
+
+Response:
+{
+  "channel_id": "...1a2b3f...",
+  "indexer": "...0xAddress...",
+  "consumer": "..0xAddress...",
+  "total": "...100...",
+  "price": "...100...",
+  "expiration": "...3600...",
+  "deployment_id": "...Qm...",
+  "callback": "0x1a2b3f...",
+  "indexer_sign": "0x1a2b3f...",
+  "consumer_sign": "0x1a2b3f..."
+}
+```
+
+#### POST `/payg/:deployment_id`
+```
+QueryState:
+{
+  "channel_id": "...1a2b3f...",  // random u256 hex string
+  "indexer": "...0xAddress...",
+  "consumer": "..0xAddress...",
+  "spent": "...100...",          // u256 number (no decimal)
+  "remote": "...100...",         // u256 number (no decimal)
+  "is_final": false,
+  "indexer_sign": "0x1a2b3f...", // hex data, if not, set ""
+  "consumer_sign": "0x1a2b3f..." // hex data, if not, set ""
+}
+Set the QueryState to `Authorization: $QueryStateString`.
+
+Request:
+{
+  "query": "...",
+  "variables": {...},
+  "operationName": "..."
+}
+
+Response:
+[
+  { "data":{ ... } },
+  { ...QueryState... },
+]
+
 ```
