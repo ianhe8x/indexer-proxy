@@ -31,6 +31,7 @@ use tdn::prelude::PeerKey;
 use tokio::sync::RwLock;
 
 use crate::cli::COMMAND;
+use crate::graphql::ACCOUNT_QUERY;
 use crate::p2p::{start_network, stop_network};
 
 pub struct Account {
@@ -134,7 +135,7 @@ pub async fn handle_account(value: &Value) -> Result<()> {
 
 pub async fn init_account() {
     let url = COMMAND.graphql_url();
-    let query = GraphQLQuery::query("query { accountMetadata { indexer controller } }");
+    let query = GraphQLQuery::query(ACCOUNT_QUERY);
     let value = graphql_request(&url, &query).await.unwrap();
 
     if let Some(value) = value.pointer("/data/accountMetadata") {

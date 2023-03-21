@@ -42,6 +42,7 @@ use subql_utils::{
 use crate::account::ACCOUNT;
 use crate::cli::{redis, COMMAND};
 use crate::contracts::check_state_channel_consumer;
+use crate::graphql::CHANNEL_QUERY;
 use crate::metrics::add_metrics_query;
 use crate::project::{get_project, list_projects};
 
@@ -446,9 +447,7 @@ pub async fn handle_channel(value: &Value) -> Result<()> {
 
 pub async fn init_channels() {
     let url = COMMAND.graphql_url();
-    let query = GraphQLQuery::query(
-        "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }",
-    );
+    let query = GraphQLQuery::query(CHANNEL_QUERY);
     let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
 
     if let Some(items) = value.pointer("/data/getAliveChannels") {

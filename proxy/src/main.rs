@@ -24,6 +24,7 @@ mod account;
 mod auth;
 mod cli;
 mod contracts;
+mod graphql;
 mod metrics;
 mod monitor;
 mod p2p;

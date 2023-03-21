@@ -94,6 +94,38 @@ Response:
 }
 ```
 
+### GET `/poi/${deployment_id}`
+
+```
+Request:
+
+Response:
+{"data":
+  {"_poi":
+    {"nodes": [
+      {
+        "chainBlockHash": "\\x7647...64504bb56",
+        "createdAt": "2023-03-21T09:54:53.562+00:00",
+        ...
+      }
+    ])
+  }
+}
+
+Request: GET `/poi/${deployment_id}/{chainBlockHash}`
+
+Response:
+{"data":
+  {"_poiByChainBlockHash":
+    {
+      "chainBlockHash": "\\x7647...64504bb56",
+      "createdAt": "2023-03-21T09:54:53.562+00:00",
+      ...
+    }
+  }
+}
+```
+
 ### GET `/healthy`
 
 ```

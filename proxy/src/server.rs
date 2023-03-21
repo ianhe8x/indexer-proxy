@@ -38,6 +38,7 @@ use crate::account::get_indexer;
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::cli::COMMAND;
 use crate::contracts::check_agreement_and_consumer;
+use crate::graphql::{poi_with_block, POI_LATEST};
 use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::{get_project, project_metadata, project_query};
 
@@ -57,20 +58,22 @@ pub async fn start_server(host: &str, port: u16) {
     let app = Router::new()
         // `POST /token` goes to create token for query.
         .route("/token", post(generate_token))
-        // `POST /query/123` goes to query with agreement.
-        .route("/query/:id", post(query_handler))
+        // `POST /query/Qm...955X` goes to query with agreement.
+        .route("/query/:deployment", post(query_handler))
         // `GET /query-limit` get the query limit times with agreement.
         .route("/query-limit", get(query_limit_handler))
         // `POST /open` goes to open a state channel for payg.
         .route("/open", post(generate_payg))
-        // `POST /payg/123` goes to query with Pay-As-You-Go with state channel.
-        .route("/payg/:id", post(payg_handler))
-        // `Get /metadata/123` goes to query the metadata (indexer, controller, payg-price).
-        .route("/metadata/:id", get(metadata_handler))
+        // `POST /payg/Qm...955X` goes to query with Pay-As-You-Go with state channel.
+        .route("/payg/:deployment", post(payg_handler))
+        // `Get /metadata/Qm...955X` goes to query the metadata (indexer, controller, payg-price).
+        .route("/metadata/:deployment", get(metadata_handler))
         // `Get /healthy` goes to query the service in running success (response the indexer)
         .route("/healthy", get(healthy_handler))
-        // `Get /poi/123` goes to query the poi
-        .route("/poi/:block", get(poi_handler))
+        // `Get /poi/Qm...955X/123` goes to query the poi
+        .route("/poi/:deployment/:block", get(poi_block_handler))
+        // `Get /poi/Qm...955X` goes to query the latest block poi
+        .route("/poi/:deployment", get(poi_latest_handler))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -154,14 +157,14 @@ pub async fn generate_token(
 
 pub async fn query_handler(
     AuthQuery(deployment_id): AuthQuery,
-    Path(id): Path<String>,
+    Path(deployment): Path<String>,
     Json(query): Json<GraphQLQuery>,
 ) -> Result<Json<Value>, Error> {
-    if COMMAND.auth() && id != deployment_id {
+    if COMMAND.auth() && deployment != deployment_id {
         return Err(Error::AuthVerify(1004));
     };
 
-    let res = project_query(&id, &query).await?;
+    let res = project_query(&deployment, &query).await?;
     Ok(Json(res))
 }
 
@@ -183,31 +186,31 @@ pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Er
 
 pub async fn payg_handler(
     AuthPayg(state): AuthPayg,
-    Path(id): Path<String>,
+    Path(deployment): Path<String>,
     Json(query): Json<GraphQLQuery>,
 ) -> Result<Json<Value>, Error> {
-    let (query_data, state_data) = query_state(&id, &query, &state).await?;
+    let (query_data, state_data) = query_state(&deployment, &query, &state).await?;
     Ok(Json(json!([query_data, state_data])))
 }
 
-pub async fn metadata_handler(Path(id): Path<String>) -> Result<Json<Value>, Error> {
-    let res = project_metadata(&id).await?;
+pub async fn metadata_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
+    let res = project_metadata(&deployment).await?;
     Ok(Json(res))
 }
 
-pub async fn poi_handler(Path(block): Path<String>) -> Result<Json<Value>, Error> {
-    let url = COMMAND.graphql_url();
-    let poi_query = format!(
-        r#"{{
-            _poiByChainBlockHash(
-                chainBlockHash:"{}",
-            )
-           {{ nodeId, id, chainBlockHash, hash, parentHash, operationHashRoot, mmrRoot, projectId, createdAt, updatedAt}}
-        }}"#,
-        &block
-    );
-    let query = GraphQLQuery::query(&poi_query);
-    let res = graphql_request(&url, &query).await?;
+pub async fn poi_block_handler(
+    Path((deployment, block)): Path<(String, String)>,
+) -> Result<Json<Value>, Error> {
+    let project = get_project(&deployment)?;
+    let query = GraphQLQuery::query(&poi_with_block(block));
+    let res = graphql_request(&project.query_endpoint, &query).await?;
+    Ok(Json(res))
+}
+
+pub async fn poi_latest_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
+    let project = get_project(&deployment)?;
+    let query = GraphQLQuery::query(POI_LATEST);
+    let res = graphql_request(&project.query_endpoint, &query).await?;
     Ok(Json(res))
 }
 

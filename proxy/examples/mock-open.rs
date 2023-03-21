@@ -51,14 +51,14 @@ async fn main() -> Result<(), Error> {
                 let (client, _, _) = init_client(ACCOUNT, network).await;
                 let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
-                    .method::<_, U256>("planTemplateIds", ())
+                    .method::<_, U256>("nextTemplateId", ())
                     .unwrap()
                     .call()
                     .await
                     .unwrap();
                 for i in 0..result.as_u32() - 1 {
                     let result: Token = plan_contract
-                        .method::<_, Token>("planTemplates", (i,))
+                        .method::<_, Token>("getPlanTemplate", (i,))
                         .unwrap()
                         .call()
                         .await
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Error> {
                 let (client, _, _) = init_client(ACCOUNT, network).await;
                 let plan_contract = plan_manager(client.clone(), network).unwrap();
                 let result: U256 = plan_contract
-                    .method::<_, U256>("nextPlanId", (indexer,))
+                    .method::<_, U256>("nextPlanId", ())
                     .unwrap()
                     .call()
                     .await
@@ -98,18 +98,21 @@ async fn main() -> Result<(), Error> {
                 }
                 for i in 1..result.as_u32() + 1 {
                     let result: Token = plan_contract
-                        .method::<_, Token>("plans", (indexer, i))
+                        .method::<_, Token>("getPlan", (i,))
                         .unwrap()
                         .call()
                         .await
                         .unwrap();
                     let tokens = result.into_tuple().unwrap();
-                    let deployment = deployment_cid(&H256::from_token(tokens[2].clone()).unwrap());
-                    let price = U256::from_token(tokens[0].clone()).unwrap();
-                    println!(
-                        "Plans: {} {} - template: {}, deployment: {}, price: {}",
-                        i, tokens[3], tokens[1], deployment, price,
-                    );
+                    let pindexer = Address::from_token(tokens[0].clone()).unwrap();
+                    let deployment = deployment_cid(&H256::from_token(tokens[3].clone()).unwrap());
+                    let price = U256::from_token(tokens[1].clone()).unwrap();
+                    if pindexer == indexer {
+                        println!(
+                            "Plans: {} {} - template: {}, deployment: {}, price: {}",
+                            i, tokens[4], tokens[2], deployment, price,
+                        );
+                    }
                 }
             }
             "show-close-agreements" => {
@@ -174,14 +177,13 @@ async fn main() -> Result<(), Error> {
                 let _receipt = pending_tx.confirmations(1).await.unwrap();
             }
             "open-close-agreement" => {
-                if args().len() != 7 && args().len() != 6 {
-                    println!("cargo run --example mock-open open-close-agreement consumersk 0xindexeraddress deployment plan_id need_allowance");
+                if args().len() != 6 && args().len() != 5 {
+                    println!("cargo run --example mock-open open-close-agreement consumersk deployment plan_id need_allowance");
                     return Ok(());
                 }
-                let indexer: Address = args().nth(3).unwrap().parse().unwrap();
-                let deployment = cid_deployment(&args().nth(4).unwrap());
-                let plan = U256::from_dec_str(&args().nth(5).unwrap()).unwrap();
-                let need_allowance: bool = if args().len() == 7 {
+                let deployment = cid_deployment(&args().nth(3).unwrap());
+                let plan = U256::from_dec_str(&args().nth(4).unwrap()).unwrap();
+                let need_allowance: bool = if args().len() == 6 {
                     args().nth(6).unwrap().parse().unwrap()
                 } else {
                     false
@@ -204,7 +206,7 @@ async fn main() -> Result<(), Error> {
                 }
 
                 let tx = contract
-                    .method::<_, ()>("acceptPlan", (indexer, deployment, plan))
+                    .method::<_, ()>("acceptPlan", (plan, deployment))
                     .unwrap()
                     .gas_price(gas_price);
                 let pending_tx = tx.send().await.unwrap();

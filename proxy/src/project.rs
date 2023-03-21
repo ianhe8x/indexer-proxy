@@ -24,13 +24,13 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use subql_utils::{
     error::Error,
-    query::METADATA_QUERY,
     request::{graphql_request, GraphQLQuery},
     types::Result,
 };
 use tdn::types::group::hash_to_group_id;
 
 use crate::cli::COMMAND;
+use crate::graphql::{METADATA_QUERY, PROJECT_QUERY};
 use crate::metrics::add_metrics_query;
 use crate::p2p::send;
 use crate::payg::merket_price;
@@ -138,9 +138,7 @@ pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
 pub async fn init_projects() {
     // graphql query for getting alive projects
     let url = COMMAND.graphql_url();
-    let query = GraphQLQuery::query(
-        "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }",
-    );
+    let query = GraphQLQuery::query(PROJECT_QUERY);
     let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
 
     if let Some(items) = value.pointer("/data/getAliveProjects") {
