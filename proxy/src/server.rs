@@ -30,7 +30,7 @@ use subql_utils::{
     constants::HEADERS,
     eip712::{recover_consumer_token_payload, recover_indexer_token_payload},
     error::Error,
-    request::{graphql_request, GraphQLQuery},
+    request::GraphQLQuery,
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -38,9 +38,8 @@ use crate::account::get_indexer;
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::cli::COMMAND;
 use crate::contracts::check_agreement_and_consumer;
-use crate::graphql::{poi_with_block, POI_LATEST};
 use crate::payg::{open_state, query_state, AuthPayg};
-use crate::project::{get_project, project_metadata, project_query};
+use crate::project::{get_project, project_metadata, project_poi, project_query};
 
 #[derive(Serialize)]
 pub struct QueryUri {
@@ -194,24 +193,17 @@ pub async fn payg_handler(
 }
 
 pub async fn metadata_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
-    let res = project_metadata(&deployment).await?;
-    Ok(Json(res))
+    project_metadata(&deployment).await.map(Json)
 }
 
 pub async fn poi_block_handler(
     Path((deployment, block)): Path<(String, String)>,
 ) -> Result<Json<Value>, Error> {
-    let project = get_project(&deployment)?;
-    let query = GraphQLQuery::query(&poi_with_block(block));
-    let res = graphql_request(&project.query_endpoint, &query).await?;
-    Ok(Json(res))
+    project_poi(&deployment, Some(block)).await.map(Json)
 }
 
 pub async fn poi_latest_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
-    let project = get_project(&deployment)?;
-    let query = GraphQLQuery::query(POI_LATEST);
-    let res = graphql_request(&project.query_endpoint, &query).await?;
-    Ok(Json(res))
+    project_poi(&deployment, None).await.map(Json)
 }
 
 pub async fn healthy_handler() -> Result<Json<Value>, Error> {

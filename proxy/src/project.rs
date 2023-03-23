@@ -29,7 +29,7 @@ use subql_utils::{
 };
 use tdn::types::group::hash_to_group_id;
 
-use crate::graphql::METADATA_QUERY;
+use crate::graphql::{poi_with_block, METADATA_QUERY, POI_LATEST, PROJECT_QUERY};
 use crate::metrics::add_metrics_query;
 use crate::p2p::send;
 use crate::payg::merket_price;
@@ -129,9 +129,16 @@ pub fn handle_project(value: &Value) -> Result<()> {
 }
 
 pub async fn project_metadata(id: &str) -> Result<Value> {
-    let project = get_project(id)?;
-    let query = GraphQLQuery::query(METADATA_QUERY);
-    graphql_request(&project.query_endpoint, &query).await
+    project_query(id, &GraphQLQuery::query(METADATA_QUERY)).await
+}
+
+pub async fn project_poi(id: &str, block: Option<String>) -> Result<Value> {
+    let query = if let Some(block) = block {
+        GraphQLQuery::query(&poi_with_block(block))
+    } else {
+        GraphQLQuery::query(POI_LATEST)
+    };
+    project_query(id, &query).await
 }
 
 pub async fn project_query(id: &str, query: &GraphQLQuery) -> Result<Value> {

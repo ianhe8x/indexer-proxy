@@ -57,13 +57,16 @@ pub fn add_metrics_query(deployment: String) {
         if let Some(url) = &COMMAND.prometheus_endpoint {
             QUERY_COUNTER.with_label_values(&[&deployment]).inc();
 
-            let _res = push_add_metrics(
+            let res = push_add_metrics(
                 "subql_indexer_query",
                 labels! {"instance".to_owned() => deployment},
                 url,
                 gather(),
                 None,
             );
+            if let Err(err) = res {
+                error!("{}", err);
+            }
         }
     });
 }
