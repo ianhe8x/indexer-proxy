@@ -29,8 +29,7 @@ use subql_utils::{
 };
 use tdn::types::group::hash_to_group_id;
 
-use crate::cli::COMMAND;
-use crate::graphql::{METADATA_QUERY, PROJECT_QUERY};
+use crate::graphql::METADATA_QUERY;
 use crate::metrics::add_metrics_query;
 use crate::p2p::send;
 use crate::payg::merket_price;
@@ -52,7 +51,6 @@ pub fn add_project(
     payg_price: U256,
     payg_expiration: u64,
     payg_overflow: U256,
-    is_init: bool,
 ) {
     let mut map = PROJECTS.lock().unwrap();
 
@@ -78,10 +76,6 @@ pub fn add_project(
     } else {
         let params = vec![json!(&deployment_id)];
         tokio::spawn(async move {
-            // waiting 10s for init network
-            if is_init {
-                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            }
             send("project-join", params, 0).await;
         });
     }
@@ -119,7 +113,7 @@ pub struct ProjectItem {
     pub payg_overflow: u64,
 }
 
-pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
+pub fn handle_project(value: &Value) -> Result<()> {
     let item: ProjectItem = serde_json::from_str(value.to_string().as_str()).unwrap();
     let payg_price = U256::from_dec_str(&item.payg_price).unwrap_or(U256::from(0));
     let payg_overflow = item.payg_overflow.into();
@@ -129,25 +123,9 @@ pub fn handle_project(value: &Value, is_init: bool) -> Result<()> {
         payg_price,
         item.payg_expiration,
         payg_overflow,
-        is_init,
     );
 
     Ok(())
-}
-
-pub async fn init_projects() {
-    // graphql query for getting alive projects
-    let url = COMMAND.graphql_url();
-    let query = GraphQLQuery::query(PROJECT_QUERY);
-    let value = graphql_request(&url, &query).await.unwrap(); // init need unwrap
-
-    if let Some(items) = value.pointer("/data/getAliveProjects") {
-        if let Some(projects) = items.as_array() {
-            for project in projects {
-                let _ = handle_project(project, true);
-            }
-        }
-    }
 }
 
 pub async fn project_metadata(id: &str) -> Result<Value> {

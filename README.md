@@ -4,8 +4,8 @@
 
 ### Start dependent services
 
+- In [indexer services](https://github.com/subquery/indexer-services), run `docker-compose -f docker-compose-dev.yml up`
 - In [coordinator service](https://github.com/subquery/indexer-coordinator), run `yarn start`
-- Enter ./proxy, and run `docker-compose up`
 
 ### Start proxy service
 

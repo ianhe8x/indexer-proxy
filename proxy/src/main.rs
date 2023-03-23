@@ -46,9 +46,6 @@ async fn main() {
     tracing_subscriber::fmt().with_max_level(log_filter).init();
 
     cli::init_redis().await;
-    account::init_account().await;
-    project::init_projects().await;
-    payg::init_channels().await;
 
     subscriber::subscribe();
     monitor::listen();

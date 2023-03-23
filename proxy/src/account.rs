@@ -22,16 +22,11 @@ use ethers::{
 };
 use once_cell::sync::Lazy;
 use serde_json::Value;
-use subql_utils::{
-    error::Error,
-    request::{graphql_request, GraphQLQuery},
-    types::Result,
-};
+use subql_utils::{error::Error, types::Result};
 use tdn::prelude::PeerKey;
 use tokio::sync::RwLock;
 
 use crate::cli::COMMAND;
-use crate::graphql::ACCOUNT_QUERY;
 use crate::p2p::{start_network, stop_network};
 
 pub struct Account {
@@ -131,16 +126,6 @@ pub async fn handle_account(value: &Value) -> Result<()> {
     }
 
     Ok(())
-}
-
-pub async fn init_account() {
-    let url = COMMAND.graphql_url();
-    let query = GraphQLQuery::query(ACCOUNT_QUERY);
-    let value = graphql_request(&url, &query).await.unwrap();
-
-    if let Some(value) = value.pointer("/data/accountMetadata") {
-        handle_account(value).await.unwrap(); // init need unwrap if has error.
-    }
 }
 
 pub async fn get_indexer() -> String {

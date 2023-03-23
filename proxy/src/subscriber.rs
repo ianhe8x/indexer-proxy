@@ -16,89 +16,65 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use futures_util::{SinkExt, StreamExt};
-use reqwest::header::HeaderValue;
-use serde_json::{json, Value};
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::{client::IntoClientRequest, protocol::Message},
-};
+use subql_utils::request::{graphql_request, GraphQLQuery};
 
 use crate::account::handle_account;
 use crate::cli::COMMAND;
+use crate::graphql::{ACCOUNT_QUERY, CHANNEL_QUERY, PROJECT_QUERY};
 use crate::payg::handle_channel;
 use crate::project::handle_project;
 
 pub fn subscribe() {
-    tokio::spawn(async move {
-        subscribe_project_change(COMMAND.graphql_url()).await;
+    tokio::spawn(async {
+        let url = COMMAND.graphql_url();
+        let mut next_time = 10;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(next_time)).await;
+            let query = GraphQLQuery::query(ACCOUNT_QUERY);
+            if let Ok(value) = graphql_request(&url, &query).await {
+                if let Some(value) = value.pointer("/data/accountMetadata") {
+                    if handle_account(value).await.is_ok() {
+                        next_time = 120;
+                    }
+                }
+            }
+        }
     });
-}
 
-async fn subscribe_project_change(mut websocket_url: String) {
-    websocket_url.replace_range(0..4, "ws");
+    tokio::spawn(async {
+        let url = COMMAND.graphql_url();
+        let mut next_time = 10;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(next_time)).await;
+            let query = GraphQLQuery::query(PROJECT_QUERY);
+            if let Ok(value) = graphql_request(&url, &query).await {
+                if let Some(items) = value.pointer("/data/getAliveProjects") {
+                    if let Some(projects) = items.as_array() {
+                        for project in projects {
+                            let _ = handle_project(project);
+                        }
+                        next_time = 120;
+                    }
+                }
+            }
+        }
+    });
 
-    let mut request = websocket_url.into_client_request().unwrap();
-    request.headers_mut().insert(
-        "Sec-WebSocket-Protocol",
-        HeaderValue::from_str("graphql-ws").unwrap(),
-    );
-    let (mut socket, _) = connect_async(request).await.unwrap();
-    info!("Connected to the websocket server");
-
-    let account_message = json!({
-        "type": "start",
-        "payload": {
-            "query": "subscription {
-                accountChanged { indexer controller }
-            }"
+    tokio::spawn(async {
+        let url = COMMAND.graphql_url();
+        let next_time = 120;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(next_time)).await;
+            let query = GraphQLQuery::query(CHANNEL_QUERY);
+            if let Ok(value) = graphql_request(&url, &query).await {
+                if let Some(items) = value.pointer("/data/getAliveChannels") {
+                    if let Some(channels) = items.as_array() {
+                        for channel in channels {
+                            let _ = handle_channel(channel).await;
+                        }
+                    }
+                }
+            }
         }
-    })
-    .to_string();
-    let project_message = json!({
-        "type": "start",
-        "payload": {
-            "query": "subscription {
-                projectChanged { id queryEndpoint paygPrice paygExpiration paygOverflow },
-            }"
-        }
-    })
-    .to_string();
-    let payg_message = json!({
-        "type": "start",
-        "payload": {
-            "query": "subscription {
-                channelChanged { id consumer total spent remote price lastFinal expiredAt }
-            }"
-        }
-    })
-    .to_string();
-    socket.send(Message::Text(account_message)).await.unwrap();
-    socket.send(Message::Text(project_message)).await.unwrap();
-    socket.send(Message::Text(payg_message)).await.unwrap();
-
-    while let Some(Ok(message)) = socket.next().await {
-        let text = message.to_text().unwrap();
-        let value = serde_json::from_str::<Value>(text);
-        if value.is_err() {
-            warn!("incoming message invalid!");
-            continue;
-        }
-        let value = value.unwrap();
-
-        if let Some(account) = value.pointer("/payload/data/accountChanged") {
-            debug!("fetch account changed: {}", account);
-            let _ = handle_account(account).await.map_err(|e| warn!("{:?}", e));
-        }
-
-        if let Some(project) = value.pointer("/payload/data/projectChanged") {
-            debug!("fetch project changed: {}", project);
-            let _ = handle_project(project, false).map_err(|e| warn!("{:?}", e));
-        }
-
-        if let Some(channel) = value.pointer("/payload/data/channelChanged") {
-            debug!("fetch channel changed: {}", channel);
-            let _ = handle_channel(channel).await.map_err(|e| warn!("{:?}", e));
-        }
-    }
+    });
 }
