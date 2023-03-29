@@ -68,19 +68,7 @@ pub async fn handle_account(value: &Value) -> Result<()> {
     });
 
     let (controller, peer) = if let Some(sk) = fetch_controller {
-        let sk_values = serde_json::from_str::<serde_json::Value>(sk)
-            .map_err(|_e| Error::InvalidController(1037))?;
-        if sk_values.get("iv").is_none() || sk_values.get("content").is_none() {
-            return Err(Error::InvalidController(1037));
-        }
-        let sk = COMMAND.decrypt(
-            sk_values["iv"]
-                .as_str()
-                .ok_or(Error::InvalidController(1037))?,
-            sk_values["content"]
-                .as_str()
-                .ok_or(Error::InvalidController(1037))?,
-        )?; // with 0x...
+        let sk = COMMAND.decrypt(sk)?;
 
         let controller = sk[2..]
             .parse::<LocalWallet>()

@@ -16,8 +16,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm,
+};
+use digest::{generic_array::GenericArray, Digest};
 use once_cell::sync::Lazy;
-use openssl::symm::{decrypt, Cipher};
 use redis::aio::Connection;
 use std::net::SocketAddr;
 use structopt::StructOpt;
@@ -52,19 +56,19 @@ pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args
 )]
 pub struct CommandLineArgs {
     /// Endpoint of this service
-    #[structopt(long = "endpoint", default_value = "http://127.0.0.1:80")]
+    #[structopt(long = "endpoint", default_value = "http://127.0.0.1:7000")]
     pub endpoint: String,
     /// IP address for the server
     #[structopt(long = "host", default_value = "127.0.0.1")]
     pub host: String,
     /// Port the service will listen on
-    #[structopt(short = "p", long = "port", default_value = "80")]
+    #[structopt(short = "p", long = "port", default_value = "7000")]
     pub port: u16,
     /// Coordinator service endpoint
     #[structopt(long = "service-url", default_value = "http://127.0.0.1:8000")]
     pub service_url: String,
     /// Secret key for decrypt key
-    #[structopt(long = "secret-key")]
+    #[structopt(long = "secret-key", default_value = "ThisIsYourSecret")]
     pub secret_key: String,
     /// Enable auth
     #[structopt(short = "a", long = "auth")]
@@ -79,7 +83,7 @@ pub struct CommandLineArgs {
     #[structopt(long = "p2p-port")]
     pub p2p_port: Option<u16>,
     /// Secret key for generate auth token
-    #[structopt(short = "j", long = "jwt-secret")]
+    #[structopt(short = "j", long = "jwt-secret", default_value = "ThisIsYourJWT")]
     pub jwt_secret: String,
     /// Blockchain network type
     #[structopt(long = "network", default_value = "")]
@@ -121,17 +125,26 @@ impl CommandLineArgs {
         self.service_url.clone() + "/graphql"
     }
 
-    pub fn decrypt(&self, iv: &str, ciphertext: &str) -> Result<String, Error> {
-        let iv = hex::decode(iv).map_err(|_| Error::InvalidEncrypt(1042))?;
-        let ctext = hex::decode(ciphertext).map_err(|_| Error::InvalidEncrypt(1042))?;
+    pub fn decrypt(&self, ct: &str) -> Result<String, Error> {
+        let ct = if ct.starts_with("0x") { &ct[2..] } else { ct };
+        let ct_bytes = hex::decode(ct).map_err(|_| Error::InvalidEncrypt(1042))?;
+        let ct_len = ct_bytes.len();
+        if ct_len < 28 {
+            return Err(Error::InvalidEncrypt(1042));
+        }
 
-        let ptext = decrypt(
-            Cipher::aes_256_ctr(),
-            self.secret_key.as_bytes(),
-            Some(&iv),
-            &ctext,
-        )
-        .map_err(|_| Error::InvalidEncrypt(1043))?;
+        let iv = &ct_bytes[ct_len - 12..];
+        let content = &ct_bytes[..ct_len - 12];
+        let nonce = GenericArray::from_slice(&iv);
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(&self.secret_key.as_bytes());
+        let gcm = Aes256Gcm::new_from_slice(hasher.finalize().as_slice())
+            .map_err(|_| Error::InvalidEncrypt(1043))?;
+
+        let ptext = gcm
+            .decrypt(nonce, content)
+            .map_err(|_| Error::InvalidEncrypt(1043))?;
 
         String::from_utf8(ptext).map_err(|_| Error::InvalidEncrypt(1044))
     }

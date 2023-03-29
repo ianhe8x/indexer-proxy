@@ -25,7 +25,6 @@
 - `1034` - Invalid project price: query next state < local state + price.
 - `1035` - Invalid project expiration: open channel expiration > project exception.
 - `1036` - Invalid service endpoint: fetch account from coordinator failure.
-- `1037` - Invalid controller: invalid controller iv & content in json.
 - `1038` - Invalid controller: parse controller sk to LocalWallet failure.
 - `1039` - Invalid controller: parse controller sk as p2p key failure.
 - `1040` - Invalid signature: cannot recover address from siganture.
