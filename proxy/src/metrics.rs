@@ -17,56 +17,83 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use once_cell::sync::Lazy;
-use prometheus::{gather, labels, push_add_metrics, register_int_counter_vec, IntCounterVec};
 use std::collections::HashMap;
+use subql_utils::request::REQUEST_CLIENT;
 use tokio::sync::Mutex;
 
 use crate::cli::COMMAND;
 
 static TIMER_COUNTER: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static OWNER_COUNTER: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-static QUERY_COUNTER: Lazy<IntCounterVec> = Lazy::new(|| {
-    register_int_counter_vec!(
-        "subquery_indexer_query_total",
-        "Total number of query request.",
-        &["deployment_id"]
-    )
-    .unwrap()
-});
+const JOB_NAME: &str = "indexer_query";
+const FIELD_NAME: &str = "query_count";
+
+pub fn listen() {
+    let url_some = COMMAND.pushgateway_endpoint.clone();
+    if let Some(url) = url_some {
+        if url.len() < 10 {
+            return;
+        }
+
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                let projects = get_owner_metrics().await;
+                for (project, count) in projects {
+                    let uri = format!("{}/metrics/job/{}/instance/{}", url, JOB_NAME, project);
+                    let data = format!("{} {}\n", FIELD_NAME, count);
+                    tokio::spawn(async move {
+                        let _res = REQUEST_CLIENT
+                            .post(uri)
+                            .header("X-Requested-With", "Indexer metrics service")
+                            .header("Content-type", "text/xml")
+                            .body(data)
+                            .send()
+                            .await;
+                    });
+                }
+            }
+        });
+    }
+}
 
 pub async fn get_timer_metrics() -> Vec<(String, u64)> {
     let mut counter = TIMER_COUNTER.lock().await;
-    let result = counter.drain().map(|(p, c)| (p, c)).collect();
-    *counter = HashMap::new();
+    let mut results = vec![];
+    for (project, count) in counter.iter_mut() {
+        results.push((project.clone(), *count));
+        *count = 0;
+    }
 
-    result
+    results
 }
 
-async fn add_timer_metrics(deployment: String) {
-    let mut counter = TIMER_COUNTER.lock().await;
-    counter
-        .entry(deployment)
-        .and_modify(|f| *f += 1)
-        .or_insert(1);
+async fn get_owner_metrics() -> Vec<(String, u64)> {
+    let mut counter = OWNER_COUNTER.lock().await;
+    let mut results = vec![];
+    for (project, count) in counter.iter_mut() {
+        results.push((project.clone(), *count));
+        *count = 0;
+    }
+
+    results
 }
 
 pub fn add_metrics_query(deployment: String) {
-    tokio::spawn(add_timer_metrics(deployment.clone()));
+    tokio::spawn(async move {
+        let mut counter = TIMER_COUNTER.lock().await;
+        counter
+            .entry(deployment.clone())
+            .and_modify(|f| *f += 1)
+            .or_insert(1);
+        drop(counter);
 
-    std::thread::spawn(move || {
-        if let Some(url) = &COMMAND.prometheus_endpoint {
-            QUERY_COUNTER.with_label_values(&[&deployment]).inc();
-
-            let res = push_add_metrics(
-                "subql_indexer_query",
-                labels! {"instance".to_owned() => deployment},
-                url,
-                gather(),
-                None,
-            );
-            if let Err(err) = res {
-                error!("{}", err);
-            }
-        }
+        let mut counter = OWNER_COUNTER.lock().await;
+        counter
+            .entry(deployment)
+            .and_modify(|f| *f += 1)
+            .or_insert(1);
+        drop(counter);
     });
 }

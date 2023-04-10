@@ -103,9 +103,9 @@ pub struct CommandLineArgs {
     /// AllowList to report metrics
     #[structopt(long = "metrics-allowlist", default_value = "")]
     pub metrics_allowlist: String,
-    /// The prometheus endpoint to report indexer's query status
-    #[structopt(long = "prometheus-endpoint")]
-    pub prometheus_endpoint: Option<String>,
+    /// The pushgateway endpoint to report indexer's query status
+    #[structopt(long = "pushgateway-endpoint")]
+    pub pushgateway_endpoint: Option<String>,
 }
 
 impl CommandLineArgs {

@@ -29,7 +29,7 @@ use subql_utils::{
 };
 use tdn::types::group::hash_to_group_id;
 
-use crate::graphql::{poi_with_block, METADATA_QUERY, POI_LATEST, PROJECT_QUERY};
+use crate::graphql::{poi_with_block, METADATA_QUERY, POI_LATEST};
 use crate::metrics::add_metrics_query;
 use crate::p2p::send;
 use crate::payg::merket_price;

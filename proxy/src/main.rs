@@ -49,6 +49,7 @@ async fn main() {
 
     subscriber::subscribe();
     monitor::listen();
+    metrics::listen();
 
     server::start_server(host, port).await;
 }
