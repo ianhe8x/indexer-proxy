@@ -39,7 +39,7 @@ OPTIONS:
         --network-endpoint <network-endpoint>          Blockchain network endpoint [default: ]
         --p2p-port <p2p-port>                          port of p2p network
     -p, --port <port>                                  Port the service will listen on [default: 80]
-        --prometheus-endpoint <prometheus-endpoint>    The prometheus endpoint to report indexer's query status
+        --pushgateway-endpoint <pushgateway-endpoint>  The pushgateway endpoint to report indexer's query status
         --redis-endpoint <redis-endpoint>              Redis client address [default: redis://127.0.0.1/]
         --secret-key <secret-key>                      Secret key for decrypt key
         --service-url <service-url>                    Coordinator service endpoint [default: http://127.0.0.1:8000]
