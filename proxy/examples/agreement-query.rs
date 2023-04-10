@@ -93,7 +93,7 @@ async fn main() -> std::io::Result<()> {
     let timestamp = Utc::now().timestamp_millis();
     let chain_id = CURRENT_NETWORK.config().chain_id as i64;
     let msg = payload_712(&consumer, &indexer, &deployment, "9", timestamp, chain_id);
-    let sign = hex::encode(signer.sign_hash(msg.into()).to_vec());
+    let sign = hex::encode(signer.sign_hash(msg.into()).unwrap().to_vec());
 
     let mut payload = HashMap::new();
     payload.insert("indexer", Value::String(indexer));
