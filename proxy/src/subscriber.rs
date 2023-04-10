@@ -16,13 +16,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use serde_json::{json, Value};
+use std::collections::HashMap;
 use subql_utils::request::{graphql_request, GraphQLQuery};
 
 use crate::account::handle_account;
 use crate::cli::COMMAND;
-use crate::graphql::{ACCOUNT_QUERY, CHANNEL_QUERY, PROJECT_QUERY};
+use crate::graphql::{ACCOUNT_QUERY, CHANNEL_QUERY, PAYG_QUERY, PROJECT_QUERY};
 use crate::payg::handle_channel;
 use crate::project::handle_project;
+
+fn merge(a: &mut Value, b: &Value) {
+    match (a, b) {
+        (&mut Value::Object(ref mut a), &Value::Object(ref b)) => {
+            for (k, v) in b {
+                merge(a.entry(k.clone()).or_insert(Value::Null), v);
+            }
+        }
+        (a, b) => {
+            *a = b.clone();
+        }
+    }
+}
 
 pub fn subscribe() {
     tokio::spawn(async {
@@ -47,15 +62,48 @@ pub fn subscribe() {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(next_time)).await;
             let query = GraphQLQuery::query(PROJECT_QUERY);
+            let payg = GraphQLQuery::query(PAYG_QUERY);
+            let mut raw_projects = HashMap::new();
+            let mut raw_paygs = HashMap::new();
             if let Ok(value) = graphql_request(&url, &query).await {
                 if let Some(items) = value.pointer("/data/getAliveProjects") {
                     if let Some(projects) = items.as_array() {
                         for project in projects {
-                            let _ = handle_project(project);
+                            let pid = project["id"].as_str().unwrap_or("").to_owned();
+                            raw_projects.insert(pid, project.clone());
                         }
-                        next_time = 120;
                     }
                 }
+            }
+            if let Ok(value) = graphql_request(&url, &payg).await {
+                if let Some(items) = value.pointer("/data/getAlivePaygs") {
+                    if let Some(paygs) = items.as_array() {
+                        for payg in paygs {
+                            let pid = payg["id"].as_str().unwrap_or("").to_owned();
+                            raw_paygs.insert(pid, payg.clone());
+                        }
+                    }
+                }
+            }
+
+            if !raw_projects.is_empty() {
+                next_time = 120;
+            }
+
+            for (k, project) in raw_projects.iter_mut() {
+                if let Some(payg) = raw_paygs.get(k) {
+                    merge(project, payg);
+                } else {
+                    merge(
+                        project,
+                        &json!({
+                            "price": "",
+                            "expiration": 0,
+                            "overflow": 0,
+                        }),
+                    );
+                }
+                let _ = handle_project(project);
             }
         }
     });

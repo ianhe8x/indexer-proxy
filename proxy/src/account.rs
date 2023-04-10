@@ -58,7 +58,7 @@ pub async fn handle_account(value: &Value) -> Result<()> {
         .parse()
         .unwrap_or(Address::default());
 
-    let fetch_controller = value.get("controller").and_then(|sk| {
+    let fetch_controller = value.get("encryptedKey").and_then(|sk| {
         let data = sk.as_str().unwrap_or("").trim();
         if !data.is_empty() {
             Some(data)

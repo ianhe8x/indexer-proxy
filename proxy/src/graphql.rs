@@ -60,10 +60,11 @@ pub const METADATA_QUERY: &str = r#"query {
   }
 }"#;
 
-pub const ACCOUNT_QUERY: &str = "query { accountMetadata { indexer controller } }";
+pub const ACCOUNT_QUERY: &str = "query { accountMetadata { indexer encryptedKey } }";
 
-pub const PROJECT_QUERY: &str =
-    "query { getAliveProjects { id queryEndpoint paygPrice paygExpiration paygOverflow } }";
+pub const PROJECT_QUERY: &str = "query { getAliveProjects { id queryEndpoint } }";
+
+pub const PAYG_QUERY: &str = "query { getAlivePaygs { id price expiration overflow } }";
 
 pub const CHANNEL_QUERY: &str =
     "query { getAliveChannels { id consumer total spent remote price lastFinal expiredAt } }";

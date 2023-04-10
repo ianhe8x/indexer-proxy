@@ -105,11 +105,11 @@ pub struct ProjectItem {
     pub id: String,
     #[serde(rename = "queryEndpoint")]
     pub query_endpoint: String,
-    #[serde(rename = "paygPrice")]
+    #[serde(rename = "price")]
     pub payg_price: String,
-    #[serde(rename = "paygExpiration")]
+    #[serde(rename = "expiration")]
     pub payg_expiration: u64,
-    #[serde(rename = "paygOverflow")]
+    #[serde(rename = "overflow")]
     pub payg_overflow: u64,
 }
 
