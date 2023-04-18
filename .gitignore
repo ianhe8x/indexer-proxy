@@ -4,3 +4,4 @@ Cargo.lock
 *.key
 history.txt
 .data
+.DS_Store
