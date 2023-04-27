@@ -62,6 +62,8 @@ pub const METADATA_QUERY: &str = r#"query {
 
 pub const ACCOUNT_QUERY: &str = "query { accountMetadata { indexer encryptedKey } }";
 
+pub const VERSION_QUERY: &str = "query { getServicesVersion { coordinator } }";
+
 pub const PROJECT_QUERY: &str = "query { getAliveProjects { id queryEndpoint } }";
 
 pub const PAYG_QUERY: &str = "query { getAlivePaygs { id price expiration overflow } }";

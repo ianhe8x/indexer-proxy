@@ -26,7 +26,10 @@ use redis::aio::Connection;
 use std::net::SocketAddr;
 use structopt::StructOpt;
 use subql_contracts::Network;
-use subql_utils::error::Error;
+use subql_utils::{
+    constants::{BOOTSTRAP, TELEMETRIES},
+    error::Error,
+};
 use tdn::prelude::PeerId;
 use tokio::sync::{Mutex, OnceCell};
 
@@ -56,10 +59,10 @@ pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args
 )]
 pub struct CommandLineArgs {
     /// Endpoint of this service
-    #[structopt(long = "endpoint", default_value = "http://127.0.0.1:7000")]
+    #[structopt(long = "endpoint", default_value = "http://0.0.0.0:7000")]
     pub endpoint: String,
     /// IP address for the server
-    #[structopt(long = "host", default_value = "127.0.0.1")]
+    #[structopt(long = "host", default_value = "0.0.0.0")]
     pub host: String,
     /// Port the service will listen on
     #[structopt(short = "p", long = "port", default_value = "7000")]
@@ -100,12 +103,12 @@ pub struct CommandLineArgs {
     /// Free query for consumer limit everyday
     #[structopt(long = "free-plan", default_value = "60")]
     pub free_limit: u64,
-    /// AllowList to report metrics
-    #[structopt(long = "metrics-allowlist", default_value = "")]
-    pub metrics_allowlist: String,
-    /// The pushgateway endpoint to report indexer's query status
-    #[structopt(long = "pushgateway-endpoint")]
-    pub pushgateway_endpoint: Option<String>,
+    /// Open telemetry for SubQuery
+    #[structopt(long = "telemetry", parse(try_from_str), default_value = "true")]
+    pub telemetry: bool,
+    /// The auth bearer for prometheus fetch metrics
+    #[structopt(long = "metrics-token", default_value = "thisismyAuthtoken")]
+    pub metrics_token: String,
 }
 
 impl CommandLineArgs {
@@ -192,13 +195,19 @@ impl CommandLineArgs {
     }
 
     pub fn bootstrap(&self) -> Vec<String> {
-        self.bootstrap.clone()
+        let mut seeds = self.bootstrap.clone();
+        seeds.extend(BOOTSTRAP.iter().map(|v| v.to_string()));
+        seeds
     }
 
-    pub fn metrics_allowlist(&self) -> Vec<PeerId> {
-        self.metrics_allowlist
-            .split(",")
-            .filter_map(|p| PeerId::from_hex(p.trim()).ok())
-            .collect()
+    pub fn telemetries(&self) -> Vec<PeerId> {
+        if self.telemetry {
+            TELEMETRIES
+                .iter()
+                .filter_map(|p| PeerId::from_hex(p.trim()).ok())
+                .collect()
+        } else {
+            vec![]
+        }
     }
 }

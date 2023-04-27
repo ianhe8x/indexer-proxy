@@ -31,6 +31,7 @@ use ethers::{
 use redis::{AsyncCommands, RedisResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Instant;
 use subql_utils::{
     error::Error,
     payg::{convert_sign_to_string, OpenState, QueryState},
@@ -303,6 +304,7 @@ pub async fn query_state(
     }
 
     // query the data.
+    let now = Instant::now();
     let data = match graphql_request(&project.query_endpoint, query).await {
         Ok(result) => {
             let _string = serde_json::to_string(&result).unwrap(); // safe unwrap
@@ -317,7 +319,9 @@ pub async fn query_state(
             Err(Error::InvalidRequest(1046))
         }
     }?;
-    add_metrics_query(project_id.to_owned());
+
+    let time = now.elapsed().as_millis() as u64;
+    add_metrics_query(project_id.to_owned(), time);
 
     state_cache.spent = local_prev + remote_next - remote_prev;
     state_cache.remote = remote_next;

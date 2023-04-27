@@ -21,8 +21,11 @@ pub enum Event {
     /// params: metadata
     ProjectHealthy(String),
     /// Report project query log to whitelist use root group id,
-    /// params: indexer, [project, metrics log in previous 1h]
-    ProjectMetrics(String, Vec<(String, u64)>),
+    /// params: indexer, version, [project, query_count/30min, query_total_time/ms]
+    ProjectMetrics(String, u64, Vec<(String, u64, u64)>),
+    /// Report indexer services status,
+    /// params: indexer, uptime, os
+    ProjectStatus(String, u64, String),
     /// Request the project info,
     /// params: project
     ProjectInfo(Option<String>),

@@ -22,7 +22,8 @@ use subql_utils::request::{graphql_request, GraphQLQuery};
 
 use crate::account::handle_account;
 use crate::cli::COMMAND;
-use crate::graphql::{ACCOUNT_QUERY, CHANNEL_QUERY, PAYG_QUERY, PROJECT_QUERY};
+use crate::graphql::{ACCOUNT_QUERY, CHANNEL_QUERY, PAYG_QUERY, PROJECT_QUERY, VERSION_QUERY};
+use crate::metrics::COORDINATOR_VERSION;
 use crate::payg::handle_channel;
 use crate::project::handle_project;
 
@@ -46,10 +47,31 @@ pub fn subscribe() {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(next_time)).await;
             let query = GraphQLQuery::query(ACCOUNT_QUERY);
+            let version_query = GraphQLQuery::query(VERSION_QUERY);
+
             if let Ok(value) = graphql_request(&url, &query).await {
                 if let Some(value) = value.pointer("/data/accountMetadata") {
                     if handle_account(value).await.is_ok() {
                         next_time = 120;
+                    }
+                }
+            }
+
+            if let Ok(value) = graphql_request(&url, &version_query).await {
+                if let Some(value) = value.pointer("/data/getServicesVersion") {
+                    if let Some(co) = value.get("coordinator") {
+                        if let Some(array) = co.as_array() {
+                            if array.len() == 4 {
+                                let mut v_bytes = [0u8; 4];
+                                v_bytes[0] = array[0].as_u64().unwrap_or(0) as u8;
+                                v_bytes[1] = array[1].as_u64().unwrap_or(0) as u8;
+                                v_bytes[2] = array[2].as_u64().unwrap_or(0) as u8;
+                                v_bytes[3] = array[3].as_u64().unwrap_or(0) as u8;
+                                let mut cv = COORDINATOR_VERSION.lock().await;
+                                *cv = u32::from_le_bytes(v_bytes);
+                                drop(cv);
+                            }
+                        };
                     }
                 }
             }

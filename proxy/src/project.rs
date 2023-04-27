@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Instant;
 use subql_utils::{
     error::Error,
     request::{graphql_request, GraphQLQuery},
@@ -143,6 +144,12 @@ pub async fn project_poi(id: &str, block: Option<String>) -> Result<Value> {
 
 pub async fn project_query(id: &str, query: &GraphQLQuery) -> Result<Value> {
     let project = get_project(id)?;
-    add_metrics_query(id.to_owned());
-    graphql_request(&project.query_endpoint, query).await
+
+    let now = Instant::now();
+    let res = graphql_request(&project.query_endpoint, query).await;
+    let time = now.elapsed().as_millis() as u64;
+
+    add_metrics_query(id.to_owned(), time);
+
+    res
 }

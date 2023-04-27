@@ -44,7 +44,7 @@ use crate::{
     account::get_indexer,
     auth::{check_and_get_agreement_limit, check_and_save_agreement},
     cli::COMMAND,
-    metrics::get_timer_metrics,
+    metrics::{get_services_version, get_status, get_timer_metrics},
     payg::{merket_price, open_state, query_state},
     project::{project_metadata, project_query},
 };
@@ -72,7 +72,7 @@ pub async fn stop_network() {
 
 async fn report_healthy() {
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await; // 10min=600
         let senders = P2P_SENDER.read().await;
         if senders.is_empty() {
             warn!("NONE NETWORK");
@@ -88,7 +88,7 @@ async fn report_healthy() {
 
 async fn report_metrics() {
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(1800)).await; // 30min=1800
         let senders = P2P_SENDER.read().await;
         if senders.is_empty() {
             warn!("NONE NETWORK");
@@ -96,6 +96,22 @@ async fn report_metrics() {
             debug!("Report projects metrics");
             senders[0]
                 .send(rpc_request(0, "project-report-metrics", vec![], 0))
+                .await;
+        }
+        drop(senders);
+    }
+}
+
+async fn report_status() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await; // 1h=3600
+        let senders = P2P_SENDER.read().await;
+        if senders.is_empty() {
+            warn!("NONE NETWORK");
+        } else {
+            debug!("Report projects status");
+            senders[0]
+                .send(rpc_request(0, "project-report-status", vec![], 0))
                 .await;
         }
         drop(senders);
@@ -118,6 +134,7 @@ pub async fn start_network(key: PeerKey) {
     });
     tokio::spawn(report_healthy());
     tokio::spawn(report_metrics());
+    tokio::spawn(report_status());
 
     let mut config = Config::default();
     config.only_stable_data = true;
@@ -319,6 +336,7 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
                     Err(err) => err.to_json(),
                 };
                 let data = serde_json::to_string(&res).unwrap_or("".to_owned());
+
                 let event = Event::ProjectHealthy(data).to_bytes();
                 for peer in peers {
                     results
@@ -335,14 +353,30 @@ fn rpc_handler(ledger: Arc<RwLock<Ledger>>) -> RpcHandler<State> {
         let mut results = HandleResult::new();
 
         let metrics = get_timer_metrics().await;
+        let versions = get_services_version().await;
         if !metrics.is_empty() {
             let indexer = get_indexer().await;
-            let event = Event::ProjectMetrics(indexer, metrics).to_bytes();
-            for peer in COMMAND.metrics_allowlist() {
+            let event = Event::ProjectMetrics(indexer, versions, metrics).to_bytes();
+            for peer in COMMAND.telemetries() {
                 results
                     .groups
                     .push((ROOT_GROUP_ID, SendType::Event(0, peer, event.clone())));
             }
+        }
+
+        Ok(results)
+    });
+
+    rpc_handler.add_method("project-report-status", |_, _, _| async move {
+        let mut results = HandleResult::new();
+
+        let status = get_status().await;
+        let indexer = get_indexer().await;
+        let event = Event::ProjectStatus(indexer, status.0, status.1).to_bytes();
+        for peer in COMMAND.telemetries() {
+            results
+                .groups
+                .push((ROOT_GROUP_ID, SendType::Event(0, peer, event.clone())));
         }
 
         Ok(results)

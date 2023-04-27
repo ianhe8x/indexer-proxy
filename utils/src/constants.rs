@@ -19,6 +19,21 @@
 use axum::http::header::{HeaderName, CONTENT_TYPE, USER_AGENT};
 use once_cell::sync::Lazy;
 
+// encode proxy(u32) & coordinator(u32)
+pub fn encode_proxy_version(version: [u8; 4]) -> u32 {
+    u32::from_le_bytes(version)
+}
+
+// decode u32 versiont to string (v0.1.0-0)
+pub fn decode_proxy_version(v: u32) -> String {
+    if v == 0 {
+        return "latest".to_owned();
+    }
+
+    let bytes = v.to_le_bytes();
+    format!("v{}.{}.{}-{}", bytes[0], bytes[1], bytes[2], bytes[3])
+}
+
 pub const APPLICATION_JSON: &str = "application/json";
 
 pub const KEEP_ALIVE: &str = "Keep-Alive";
@@ -34,3 +49,10 @@ pub static HEADERS: Lazy<[HeaderName; 5]> = Lazy::new(|| {
         HeaderName::from_static("x-apollo-tracing"),
     ]
 });
+
+pub const TELEMETRIES: [&str; 2] = [
+    "0x41526BE3CDe4b0ff39A4A2908Af3527a703E9fDa", // TESTNET
+    "0x740BD38d229C01Fe569071D4132E8851b3011DF0", // MAINNET
+];
+
+pub const BOOTSTRAP: [&str; 2] = ["210.55.152.69:7370", "8.219.53.64:7370"];

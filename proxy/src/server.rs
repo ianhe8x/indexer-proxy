@@ -19,10 +19,11 @@
 #![deny(warnings)]
 use axum::{
     extract::{ConnectInfo, Path},
-    http::Method,
+    http::{Method, Response, StatusCode},
     routing::{get, post},
     Json, Router,
 };
+use axum_auth::AuthBearer;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -38,6 +39,7 @@ use crate::account::get_indexer;
 use crate::auth::{create_jwt, AuthQuery, AuthQueryLimit, Payload};
 use crate::cli::COMMAND;
 use crate::contracts::check_agreement_and_consumer;
+use crate::metrics::{get_owner_metrics_count, get_owner_metrics_time};
 use crate::payg::{open_state, query_state, AuthPayg};
 use crate::project::{get_project, project_metadata, project_poi, project_query};
 
@@ -73,6 +75,8 @@ pub async fn start_server(host: &str, port: u16) {
         .route("/poi/:deployment/:block", get(poi_block_handler))
         // `Get /poi/Qm...955X` goes to query the latest block poi
         .route("/poi/:deployment", get(poi_latest_handler))
+        .route("/metrics-count", get(metrics_count_handler))
+        .route("/metrics-time", get(metrics_time_handler))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -89,7 +93,7 @@ pub async fn start_server(host: &str, port: u16) {
         .unwrap();
 }
 
-pub async fn generate_token(
+async fn generate_token(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<Payload>,
 ) -> Result<Json<Value>, Error> {
@@ -154,7 +158,7 @@ pub async fn generate_token(
     }
 }
 
-pub async fn query_handler(
+async fn query_handler(
     AuthQuery(deployment_id): AuthQuery,
     Path(deployment): Path<String>,
     Json(query): Json<GraphQLQuery>,
@@ -167,7 +171,7 @@ pub async fn query_handler(
     Ok(Json(res))
 }
 
-pub async fn query_limit_handler(
+async fn query_limit_handler(
     AuthQueryLimit(daily_limit, daily_used, rate_limit, rate_used): AuthQueryLimit,
 ) -> Result<Json<Value>, Error> {
     Ok(Json(json!({
@@ -178,12 +182,12 @@ pub async fn query_limit_handler(
     })))
 }
 
-pub async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Error> {
+async fn generate_payg(Json(payload): Json<Value>) -> Result<Json<Value>, Error> {
     let state = open_state(&payload).await?;
     Ok(Json(state))
 }
 
-pub async fn payg_handler(
+async fn payg_handler(
     AuthPayg(state): AuthPayg,
     Path(deployment): Path<String>,
     Json(query): Json<GraphQLQuery>,
@@ -192,21 +196,69 @@ pub async fn payg_handler(
     Ok(Json(json!([query_data, state_data])))
 }
 
-pub async fn metadata_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
+async fn metadata_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
     project_metadata(&deployment).await.map(Json)
 }
 
-pub async fn poi_block_handler(
+async fn poi_block_handler(
     Path((deployment, block)): Path<(String, String)>,
 ) -> Result<Json<Value>, Error> {
     project_poi(&deployment, Some(block)).await.map(Json)
 }
 
-pub async fn poi_latest_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
+async fn poi_latest_handler(Path(deployment): Path<String>) -> Result<Json<Value>, Error> {
     project_poi(&deployment, None).await.map(Json)
 }
 
-pub async fn healthy_handler() -> Result<Json<Value>, Error> {
+async fn healthy_handler() -> Result<Json<Value>, Error> {
     let indexer = get_indexer().await;
     Ok(Json(json!({ "indexer": indexer })))
+}
+
+async fn metrics_count_handler(AuthBearer(token): AuthBearer) -> Response<String> {
+    if token == COMMAND.metrics_token {
+        let body = get_owner_metrics_count().await;
+        let res = Response::builder()
+            .header(
+                "Content-Type",
+                "application/openmetrics-text; version=1.0.0; charset=utf-8",
+            )
+            .status(StatusCode::OK);
+        match res.body(body) {
+            Ok(res) => res,
+            Err(_) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_owned())
+                .unwrap(),
+        }
+    } else {
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body("".to_owned())
+            .unwrap()
+    }
+}
+
+async fn metrics_time_handler(AuthBearer(token): AuthBearer) -> Response<String> {
+    if token == COMMAND.metrics_token {
+        let body = get_owner_metrics_time().await;
+        let res = Response::builder()
+            .header(
+                "Content-Type",
+                "application/openmetrics-text; version=1.0.0; charset=utf-8",
+            )
+            .status(StatusCode::OK);
+        match res.body(body) {
+            Ok(res) => res,
+            Err(_) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_owned())
+                .unwrap(),
+        }
+    } else {
+        Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body("".to_owned())
+            .unwrap()
+    }
 }
