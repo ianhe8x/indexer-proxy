@@ -55,4 +55,4 @@ pub const TELEMETRIES: [&str; 2] = [
     "0x740BD38d229C01Fe569071D4132E8851b3011DF0", // MAINNET
 ];
 
-pub const BOOTSTRAP: [&str; 2] = ["210.55.152.69:7370", "8.219.53.64:7370"];
+pub const BOOTSTRAP: [&str; 2] = ["210.55.152.69:7370", "8.219.198.62:7370"];
