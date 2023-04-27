@@ -88,7 +88,7 @@ async fn report_healthy() {
 
 async fn report_metrics() {
     loop {
-        tokio::time::sleep(std::time::Duration::from_secs(1800)).await; // 30min=1800
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await; // 5min=300
         let senders = P2P_SENDER.read().await;
         if senders.is_empty() {
             warn!("NONE NETWORK");
