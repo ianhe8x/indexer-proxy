@@ -15,40 +15,28 @@ RUN yarn --version
 
 RUN update-ca-certificates
 
-# Create appuser
-ENV USER=subql
-ENV UID=10001
-
-RUN adduser \
-  --disabled-password \
-  --gecos "" \
-  --home "/nonexistent" \
-  --shell "/sbin/nologin" \
-  --no-create-home \
-  --uid "${UID}" \
-  "${USER}"
-
-
 WORKDIR /subql
 
-RUN git clone https://github.com/subquery/indexer-proxy.git .
+COPY . .
 
-RUN cargo update
-RUN cargo build --release
+RUN --mount=type=cache,id=cargo_bin,target=~/.cargo/bin/ \
+    --mount=type=cache,id=cargo_reg_index,target=~/.cargo/registry/index/ \
+    --mount=type=cache,id=cargo_reg_cache,target=~/.cargo/registry/cache/ \
+    --mount=type=cache,id=cargo_git,target=~/.cargo/git/db/ \
+    --mount=type=cache,id=target,target=/subql/target/ \
+    cargo update && cargo build --release && mv /subql/target/release/subql-proxy /subql/
 
 # Final image
 FROM debian:buster-slim
 
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends ca-certificates
-RUN update-ca-certificates
-
-RUN apt-get --assume-yes install curl
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+    apt-get --assume-yes install curl && \
+    update-ca-certificates
 
 WORKDIR /subql
 
 # Copy our build
-COPY --from=builder /subql/target/release/subql-proxy .
+COPY --from=builder /subql/subql-proxy .
 
 # Use an unprivileged user.
 RUN groupadd --gid 10001 subql && \

@@ -1,4 +1,4 @@
-name: "Deploy-docker-amd64"
+name: "Deploy-docker-arm64"
 on:
   workflow_dispatch:
     inputs:
@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          platforms: amd64
+          platforms: arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          platforms: amd64
+          platforms: arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
