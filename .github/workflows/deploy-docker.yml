@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          platforms: amd64
+          platforms: amd64,arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          platforms: amd64
+          platforms: amd64,arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
