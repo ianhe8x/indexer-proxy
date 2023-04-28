@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use structopt::StructOpt;
 use subql_contracts::Network;
 use subql_utils::{
-    constants::{BOOTSTRAP, TELEMETRIES},
+    constants::{BOOTSTRAP, TELEMETRIES_MAINNET, TELEMETRIES_TESTNET},
     error::Error,
 };
 use tdn::prelude::PeerId;
@@ -59,13 +59,13 @@ pub static COMMAND: Lazy<CommandLineArgs> = Lazy::new(CommandLineArgs::from_args
 )]
 pub struct CommandLineArgs {
     /// Endpoint of this service
-    #[structopt(long = "endpoint", default_value = "http://0.0.0.0:7000")]
+    #[structopt(long = "endpoint", default_value = "http://0.0.0.0:8080")]
     pub endpoint: String,
     /// IP address for the server
     #[structopt(long = "host", default_value = "0.0.0.0")]
     pub host: String,
     /// Port the service will listen on
-    #[structopt(short = "p", long = "port", default_value = "7000")]
+    #[structopt(short = "p", long = "port", default_value = "8080")]
     pub port: u16,
     /// Coordinator service endpoint
     #[structopt(long = "service-url", default_value = "http://127.0.0.1:8000")]
@@ -202,10 +202,16 @@ impl CommandLineArgs {
 
     pub fn telemetries(&self) -> Vec<PeerId> {
         if self.telemetry {
-            TELEMETRIES
-                .iter()
-                .filter_map(|p| PeerId::from_hex(p.trim()).ok())
-                .collect()
+            match self.network() {
+                Network::Kepler | Network::Mainnet => TELEMETRIES_MAINNET
+                    .iter()
+                    .filter_map(|p| PeerId::from_hex(p.trim()).ok())
+                    .collect(),
+                _ => TELEMETRIES_TESTNET
+                    .iter()
+                    .filter_map(|p| PeerId::from_hex(p.trim()).ok())
+                    .collect(),
+            }
         } else {
             vec![]
         }

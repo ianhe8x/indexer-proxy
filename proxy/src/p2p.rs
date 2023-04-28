@@ -137,7 +137,7 @@ pub async fn start_network(key: PeerKey) {
     tokio::spawn(report_status());
 
     let mut config = Config::default();
-    config.only_stable_data = true;
+    config.only_stable_data = false;
     config.db_path = Some(PathBuf::from("./.data/p2p"));
     config.rpc_http = None;
     config.p2p_peer = Peer::socket(COMMAND.p2p());
@@ -152,7 +152,7 @@ pub async fn start_network(key: PeerKey) {
     let ledger = Arc::new(RwLock::new(Ledger {
         groups: init_groups,
     }));
-    bootstrap(&send, ledger.clone()).await;
+    bootstrap(&send).await;
 
     let rpc_handler = rpc_handler(ledger.clone());
     while let Some(message) = out_recv.recv().await {
@@ -169,7 +169,7 @@ pub async fn start_network(key: PeerKey) {
             }
             ReceiveMessage::NetworkLost => {
                 debug!("No network connections, will re-connect");
-                bootstrap(&send, ledger.clone()).await;
+                bootstrap(&send).await;
             }
             ReceiveMessage::Own(_) => {
                 debug!("Nothing about own");
@@ -571,24 +571,12 @@ async fn handle_group(
     Ok(results)
 }
 
-async fn bootstrap(sender: &Sender<SendMessage>, ledger: Arc<RwLock<Ledger>>) {
-    let projects: Vec<String> = ledger
-        .read()
-        .await
-        .groups
-        .iter()
-        .map(|(_, (p, _))| p.to_owned())
-        .collect();
-    let self_bytes = bincode::serialize(&JoinData(projects)).unwrap_or(vec![]);
-
+async fn bootstrap(sender: &Sender<SendMessage>) {
     for seed in COMMAND.bootstrap() {
         if let Ok(addr) = seed.parse() {
             let peer = Peer::socket(addr);
             sender
-                .send(SendMessage::Group(
-                    ROOT_GROUP_ID,
-                    SendType::Connect(0, peer, self_bytes.clone()),
-                ))
+                .send(SendMessage::Network(NetworkType::Connect(peer)))
                 .await
                 .expect("TDN channel closed");
         }
