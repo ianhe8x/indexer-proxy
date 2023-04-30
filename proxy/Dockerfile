@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.cargo/bin/ \
     --mount=type=cache,target=/root/.cargo/registry/cache/ \
     --mount=type=cache,target=/root/.cargo/git/db/ \
     --mount=type=cache,target=/subql/target/ \
-    ls -l target/release/deps && cargo build --release && mv /subql/target/release/subql-proxy /subql/
+    cargo build --release && mv /subql/target/release/subql-proxy /subql/
 
 # Final image
 FROM debian:buster-slim

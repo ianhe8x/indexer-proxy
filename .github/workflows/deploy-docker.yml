@@ -27,7 +27,14 @@ jobs:
         with:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      -
+        name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       ## node
       - name: Get updated coordinator version
         id: fetch-version
@@ -40,8 +47,8 @@ jobs:
         with:
           push: false
           platforms: amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
@@ -52,11 +59,18 @@ jobs:
         with:
           push: false
           platforms: amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }},onfinality/subql-indexer-proxy:latest
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
-
+      -
+        # Temp fix
+        # https://github.com/docker/build-push-action/issues/252
+        # https://github.com/moby/buildkit/issues/1896
+        name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
