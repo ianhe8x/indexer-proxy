@@ -33,6 +33,14 @@ jobs:
         with:
           path: /tmp/.cargo-cache
           key: ${{ runner.os }}-cargo
+      - name: Init cache dir
+        id: init-cache
+        run: |
+          mkdir -p /tmp/.cargo-cache/cargo_bin
+          mkdir -p /tmp/.cargo-cache/cargo_reg_index
+          mkdir -p /tmp/.cargo-cache/cargo_reg_cache
+          mkdir -p /tmp/.cargo-cache/cargo_git
+          mkdir -p /tmp/.cargo-cache/target
       ## node
       - name: Get updated coordinator version
         id: fetch-version
