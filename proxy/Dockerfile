@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /subql
 
 # Copy our build
-COPY --from=builder /subql/target/release/subql-proxy .
+COPY --from=builder /subql/subql-proxy .
 
 # Use an unprivileged user.
 RUN groupadd --gid 10001 subql && \
