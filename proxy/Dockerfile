@@ -1,7 +1,7 @@
 # Builder
 FROM rust AS builder
 
-ENV NODE_VERSION=16.17.0
+ENV NODE_VERSION=16
 RUN apt install -y curl
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash
 ENV NVM_DIR=/root/.nvm
