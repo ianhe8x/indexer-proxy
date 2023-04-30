@@ -19,11 +19,7 @@ WORKDIR /subql
 
 COPY . .
 
-RUN --mount=type=bind,source=/tmp/.cargo-cache/cargo_bin,target=/root/.cargo/bin/ \
-    --mount=type=bind,source=/tmp/.cargo-cache/cargo_reg_index,target=/root/.cargo/registry/index/ \
-    --mount=type=bind,source=/tmp/.cargo-cache/cargo_reg_cache,target=/root/.cargo/registry/cache/ \
-    --mount=type=bind,source=/tmp/.cargo-cache/cargo_git,target=/root/.cargo/git/db/ \
-    --mount=type=bind,source=/tmp/.cargo-cache/target,target=/subql/target/ \
+RUN --mount=type=cache,target=/subql/target/ \
     cargo build --release && mv /subql/target/release/subql-proxy /subql/
 
 # Final image
