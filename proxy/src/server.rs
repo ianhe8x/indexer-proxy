@@ -75,7 +75,7 @@ pub async fn start_server(host: &str, port: u16) {
         .route("/poi/:deployment/:block", get(poi_block_handler))
         // `Get /poi/Qm...955X` goes to query the latest block poi
         .route("/poi/:deployment", get(poi_latest_handler))
-        .route("/metrics-count", get(metrics_count_handler))
+        .route("/metrics-count1", get(metrics_count_handler))
         .route("/metrics-time", get(metrics_time_handler))
         .layer(
             CorsLayer::new()
