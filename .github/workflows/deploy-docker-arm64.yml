@@ -40,8 +40,6 @@ jobs:
         with:
           push: true
           platforms: arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
@@ -52,8 +50,6 @@ jobs:
         with:
           push: true
           platforms: arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }},onfinality/subql-indexer-proxy:latest
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}

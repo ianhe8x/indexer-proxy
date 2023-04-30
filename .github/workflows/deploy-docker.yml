@@ -27,7 +27,12 @@ jobs:
         with:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
+      - name: Cache Cargo Builds
+        uses: actions/cache@v3
+        id: cache
+        with:
+          path: /tmp/.cargo-cache
+          key: ${{ runner.os }}-cargo
       ## node
       - name: Get updated coordinator version
         id: fetch-version
@@ -38,10 +43,8 @@ jobs:
         if: github.event.inputs.isLatest == 'false'
         uses: docker/build-push-action@v4
         with:
-          push: true
-          platforms: amd64,arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: false
+          platforms: amd64
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
@@ -50,10 +53,8 @@ jobs:
         if: github.event.inputs.isLatest == 'true'
         uses: docker/build-push-action@v4
         with:
-          push: true
-          platforms: amd64,arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: false
+          platforms: amd64
           file: ./proxy/Dockerfile
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }},onfinality/subql-indexer-proxy:latest
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}

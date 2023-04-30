@@ -19,12 +19,12 @@ WORKDIR /subql
 
 COPY . .
 
-RUN --mount=type=cache,id=cargo_bin,target=~/.cargo/bin/ \
-    --mount=type=cache,id=cargo_reg_index,target=~/.cargo/registry/index/ \
-    --mount=type=cache,id=cargo_reg_cache,target=~/.cargo/registry/cache/ \
-    --mount=type=cache,id=cargo_git,target=~/.cargo/git/db/ \
-    --mount=type=cache,id=target,target=/subql/target/ \
-    cargo update && cargo build --release && mv /subql/target/release/subql-proxy /subql/
+RUN --mount=type=bind,source=/tmp/.cargo-cache/cargo_bin,target=/root/.cargo/bin/ \
+    --mount=type=bind,source=/tmp/.cargo-cache/cargo_reg_index,target=/root/.cargo/registry/index/ \
+    --mount=type=bind,source=/tmp/.cargo-cache/cargo_reg_cache,target=/root/.cargo/registry/cache/ \
+    --mount=type=bind,source=/tmp/.cargo-cache/cargo_git,target=/root/.cargo/git/db/ \
+    --mount=type=bind,source=/tmp/.cargo-cache/target,target=/subql/target/ \
+    cargo build --release && mv /subql/target/release/subql-proxy /subql/
 
 # Final image
 FROM debian:buster-slim
@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /subql
 
 # Copy our build
-COPY --from=builder /subql/subql-proxy .
+COPY --from=builder /subql/target/release/subql-proxy .
 
 # Use an unprivileged user.
 RUN groupadd --gid 10001 subql && \
