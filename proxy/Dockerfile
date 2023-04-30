@@ -19,12 +19,12 @@ WORKDIR /subql
 
 COPY . .
 
-RUN --mount=type=cache,id=cargo_bin,target=/root/.cargo/bin/ \
-    --mount=type=cache,id=cargo_reg_index,target=/root/.cargo/registry/index/ \
-    --mount=type=cache,id=cargo_reg_cache,target=/root/.cargo/registry/cache/ \
-    --mount=type=cache,id=cargo_git,target=/root/.cargo/git/db/ \
+RUN --mount=type=cache,target=/root/.cargo/bin/ \
+    --mount=type=cache,target=/root/.cargo/registry/index/ \
+    --mount=type=cache,target=/root/.cargo/registry/cache/ \
+    --mount=type=cache,target=/root/.cargo/git/db/ \
     --mount=type=cache,target=/subql/target/ \
-    cargo build --release && mv /subql/target/release/subql-proxy /subql/
+    ls -l target/release/deps && cargo build --release && mv /subql/target/release/subql-proxy /subql/
 
 # Final image
 FROM debian:buster-slim
