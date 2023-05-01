@@ -51,6 +51,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           file: ./proxy/Dockerfile
+          content: .
           tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
           build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
 
@@ -60,6 +61,7 @@ jobs:
         with:
           push: false
           platforms: amd64
+          content: .
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
           file: ./proxy/Dockerfile
