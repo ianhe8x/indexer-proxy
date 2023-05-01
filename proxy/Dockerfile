@@ -19,6 +19,7 @@ WORKDIR /subql
 
 COPY . .
 RUN ls -l .dummy
+COPY .dummy/* .
 
 COPY . .
 
