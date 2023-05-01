@@ -41,9 +41,7 @@ jobs:
         run: |
           sh .github/workflows/scripts/fetchVersion.sh
       - name: Create Cargo Dummy
-        run: |
-          sh .github/workflows/scripts/createdummy.sh
-
+        run: .github/workflows/scripts/createdummy.sh
       - name: Build and push
         if: github.event.inputs.isLatest == 'false'
         uses: docker/build-push-action@v4
