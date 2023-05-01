@@ -17,14 +17,12 @@ RUN update-ca-certificates
 
 WORKDIR /subql
 
+COPY .dummy/ .
+RUN cargo build --release
+
 COPY . .
 
-RUN --mount=type=cache,target=/root/.cargo/bin/ \
-    --mount=type=cache,target=/root/.cargo/registry/index/ \
-    --mount=type=cache,target=/root/.cargo/registry/cache/ \
-    --mount=type=cache,target=/root/.cargo/git/db/ \
-    --mount=type=cache,target=/subql/target/ \
-    cargo build --release && mv /subql/target/release/subql-proxy /subql/
+RUN cargo build --release
 
 # Final image
 FROM debian:buster-slim
@@ -36,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /subql
 
 # Copy our build
-COPY --from=builder /subql/subql-proxy .
+COPY --from=builder /subql/target/release/subql-proxy .
 
 # Use an unprivileged user.
 RUN groupadd --gid 10001 subql && \
