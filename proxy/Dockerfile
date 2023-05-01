@@ -22,8 +22,8 @@ RUN cargo build --release
 
 COPY . .
 
-RUN utils/src/lib.rs
-RUN proxy/src/main.rs
+RUN cat utils/src/lib.rs
+RUN cat proxy/src/main.rs
 
 RUN cargo build --release
 
