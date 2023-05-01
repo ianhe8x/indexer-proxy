@@ -21,7 +21,7 @@ COPY .dummy .
 RUN cargo build --release
 
 COPY . .
-
+RUN ls
 RUN cat utils/src/lib.rs
 RUN cat proxy/src/main.rs
 
