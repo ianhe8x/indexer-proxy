@@ -17,11 +17,8 @@ RUN update-ca-certificates
 
 WORKDIR /subql
 
-COPY .dummy/Cargo.toml .dummy/Cargo.lock ./
-COPY .dummy/proxy/Cargo.toml ./proxy/
-COPY .dummy/proxy/src/main.rs ./proxy/src/
-COPY .dummy/utils/Cargo.toml ./utils/
-COPY .dummy/utils/src/lib.rs ./utils/src/
+COPY .dummy ./
+COPY Cargo.lock ./
 
 RUN cargo build --release
 RUN rm -f target/release/deps/libsubql_utils*
