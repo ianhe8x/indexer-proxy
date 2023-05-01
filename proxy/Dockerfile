@@ -17,8 +17,8 @@ RUN update-ca-certificates
 
 WORKDIR /subql
 
-COPY .dummy .
-RUN cargo build --release
+COPY . .
+RUN ls -l .dummy
 
 COPY . .
 
