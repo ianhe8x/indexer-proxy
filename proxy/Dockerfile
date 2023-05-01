@@ -19,6 +19,7 @@ WORKDIR /subql
 
 COPY .dummy .
 RUN cargo build --release
+RUN rm -rf proxy utils
 
 COPY . .
 RUN ls
