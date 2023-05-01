@@ -15,6 +15,8 @@ jobs:
         with:
           fetch-depth: 100
           token: ${{ secrets.REPO_TOKEN }}
+      - name: Create Cargo Dummy
+        run: .github/workflows/scripts/createdummy.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -40,8 +42,6 @@ jobs:
         id: fetch-version
         run: |
           sh .github/workflows/scripts/fetchVersion.sh
-      - name: Create Cargo Dummy
-        run: .github/workflows/scripts/createdummy.sh
       - name: Build and push
         if: github.event.inputs.isLatest == 'false'
         uses: docker/build-push-action@v4
