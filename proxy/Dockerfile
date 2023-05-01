@@ -22,6 +22,9 @@ RUN cargo build --release
 
 COPY . .
 
+RUN utils/src/lib.rs
+RUN proxy/src/main.rs
+
 RUN cargo build --release
 
 # Final image
