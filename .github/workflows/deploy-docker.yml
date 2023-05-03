@@ -10,6 +10,14 @@ on:
 jobs:
   build-push-docker:
     runs-on: ubuntu-latest
+    container:
+      image: rust:1.69
+      env:
+        NODE_ENV: development
+      ports:
+        - 80
+      volumes:
+        - ${{ GITHUB_WORKSPACE }}:/volume_mount
     steps:
       - uses: actions/checkout@v3
         with:
@@ -27,51 +35,52 @@ jobs:
         with:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-      ## node
-      - name: Get updated coordinator version
-        id: fetch-version
-        run: |
-          sh .github/workflows/scripts/fetchVersion.sh
-      - name: Build and push
-        if: github.event.inputs.isLatest == 'false'
-        uses: docker/build-push-action@v4
-        with:
-          push: false
-          platforms: amd64
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-          file: ./proxy/Dockerfile
-          context: .
-          tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
-          build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
-
-      - name: Build and push
-        if: github.event.inputs.isLatest == 'true'
-        uses: docker/build-push-action@v4
-        with:
-          push: false
-          platforms: amd64
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-          file: ./proxy/Dockerfile
-          context: .
-          tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }},onfinality/subql-indexer-proxy:latest
-          build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
-      -
-        # Temp fix
-        # https://github.com/docker/build-push-action/issues/252
-        # https://github.com/moby/buildkit/issues/1896
-        name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-      - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+      - run: pwd && ls && ls /volume_mount
+#      -
+#        name: Cache Docker layers
+#        uses: actions/cache@v3
+#        with:
+#          path: /tmp/.buildx-cache
+#          key: ${{ runner.os }}-buildx
+#          restore-keys: |
+#            ${{ runner.os }}-buildx-
+#      ## node
+#      - name: Get updated coordinator version
+#        id: fetch-version
+#        run: |
+#          sh .github/workflows/scripts/fetchVersion.sh
+#      - name: Build and push
+#        if: github.event.inputs.isLatest == 'false'
+#        uses: docker/build-push-action@v4
+#        with:
+#          push: false
+#          platforms: amd64
+#          cache-from: type=local,src=/tmp/.buildx-cache
+#          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+#          file: ./proxy/Dockerfile
+#          context: .
+#          tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }}
+#          build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
+#
+#      - name: Build and push
+#        if: github.event.inputs.isLatest == 'true'
+#        uses: docker/build-push-action@v4
+#        with:
+#          push: false
+#          platforms: amd64
+#          cache-from: type=local,src=/tmp/.buildx-cache
+#          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+#          file: ./proxy/Dockerfile
+#          context: .
+#          tags: onfinality/subql-indexer-proxy:v${{ steps.fetch-version.outputs.VERSION }},onfinality/subql-indexer-proxy:latest
+#          build-args: RELEASE_VERSION=${{ steps.fetch-version.outputs.VERSION }}
+#      -
+#        # Temp fix
+#        # https://github.com/docker/build-push-action/issues/252
+#        # https://github.com/moby/buildkit/issues/1896
+#        name: Move cache
+#        run: |
+#          rm -rf /tmp/.buildx-cache
+#          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+#      - name: Image digest
+#        run: echo ${{ steps.docker_build.outputs.digest }}
