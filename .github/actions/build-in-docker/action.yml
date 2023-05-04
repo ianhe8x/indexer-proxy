@@ -4,11 +4,11 @@
 name: 'Build in docker'
 description: 'This will remove stableVersion from packages for prerelease'
 inputs:
-  cachedir:
-    description: 'the path of cachedir'
+  arch:
+    description: 'amd64|arm64'
     required: true
 
-  
+
 runs:
   using: "composite"
   steps:
@@ -26,9 +26,9 @@ runs:
     - name: Build
       run: |
         docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . 
-        [ -f "${{inputs.cachedir}}/target" ] && cp -r "${{inputs.cachedir}}"/target .
+        [ -f "/tmp/.buildx-cache/${{inputs.arch}}/target" ] && cp -r "/tmp/.buildx-cache/${{inputs.arch}}/target" .
         mkdir -p target
         docker run --rm -v ${{github.workspace}}/target:/subql/target tmp /bin/sh -c "cargo build --release && rm -f target/release/deps/libsubql_utils*"
-        rm -rf ${{inputs.cachedir}}/target
-        cp -r target ${{inputs.cachedir}}
+        rm -rf /tmp/.buildx-cache/${{inputs.arch}}/target
+        cp -r target /tmp/.buildx-cache/${{inputs.arch}}
       shell: bash

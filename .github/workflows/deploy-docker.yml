@@ -30,7 +30,7 @@ jobs:
       - name: Build
         uses: ./.github/actions/build-in-docker
         with:
-          cachedir: /tmp/.buildx-cache/amd64
+          arch: amd64
 #        run: |
 #          docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . && docker cp $(docker create --name tmp tmp):/subql/target ${{github.workspace}} && docker rm tmp
       - run: |
