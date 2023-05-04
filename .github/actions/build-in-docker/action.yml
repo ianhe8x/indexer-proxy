@@ -53,3 +53,4 @@ runs:
       run: |
         rm -rf /tmp/.buildx-cache/builder
         mv /tmp/.builder-new /tmp/.buildx-cache/builder
+      shell: bash
