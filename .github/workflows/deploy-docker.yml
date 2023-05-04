@@ -28,7 +28,7 @@ jobs:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - run: pwd && ls && ls /volume_mount
-        container: rust:1.69
+        uses: docker://rust:1.69
 #      -
 #        name: Cache Docker layers
 #        uses: actions/cache@v3
