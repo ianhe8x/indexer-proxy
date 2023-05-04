@@ -12,3 +12,4 @@ runs:
     - name: Build
       run: |
         docker build -v ${{github.workspace}}/target:/subql/target .
+      shell: sh
