@@ -28,6 +28,8 @@ jobs:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: ./.github/actions/build-in-docker
+      - run: |
+          ls && ls target
 #      -
 #        name: Cache Docker layers
 #        uses: actions/cache@v3
