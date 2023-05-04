@@ -7,9 +7,8 @@ description: 'This will remove stableVersion from packages for prerelease'
   
 runs:
   using: "composite"
-  container:
-    image: rust:1.69
   steps:
-    - working-directory: ${{ github.workspace }}
-      run: pwd && ls
-      shell: bash
+    - uses: actions/checkout@v3
+    - name: Build
+      run: |
+        docker build -v ${{github.workspace}}/target:/subql/target .
