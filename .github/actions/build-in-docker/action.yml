@@ -28,7 +28,10 @@ runs:
         docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . 
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/target"
         cp -r "/tmp/.buildx-cache/${{inputs.arch}}/target" .
-        docker run --rm -v ${{github.workspace}}/target:/subql/target tmp /bin/sh -c "cargo build --release && rm -f target/release/deps/libsubql_utils*"
+        ls ${{github.workspace}}/target
+        ls ${{github.workspace}}/target/release || true
+        ls ${{github.workspace}}/target/release/deps || true
+        docker run --rm -v ${{github.workspace}}/target:/subql/target tmp /bin/sh -c "ls target && cargo build --release && rm -f target/release/deps/libsubql_utils*"
         rm -rf /tmp/.buildx-cache/${{inputs.arch}}/target
         cp -r target /tmp/.buildx-cache/${{inputs.arch}}
       shell: bash
