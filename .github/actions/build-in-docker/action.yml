@@ -31,6 +31,8 @@ runs:
         file: .github/actions/build-in-docker/Dockerfile
         context: .
         tags: dep-builder
+        outputs:
+          - type=image
         cache-from: type=local,src=/tmp/.buildx-cache/builder
         cache-to: type=local,dest=/tmp/.builder-new,mode=max
     - name: Build
