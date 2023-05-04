@@ -30,7 +30,7 @@ runs:
         platforms: amd64
         file: .github/actions/build-in-docker/Dockerfile
         context: .
-        tags: tmp
+        tags: dep-builder
         cache-from: type=local,src=/tmp/.buildx-cache/builder
         cache-to: type=local,dest=/tmp/.builder-new,mode=max
     - name: Build
@@ -42,7 +42,7 @@ runs:
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/git/db"
         ls /tmp/.buildx-cache/${{inputs.arch}}/target || true
         ls /tmp/.buildx-cache/${{inputs.arch}}/target/release || true
-        docker run --rm -v /tmp/.buildx-cache/${{inputs.arch}}/target:/subql/target -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/bin:/root/.cargo/bin -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/index:/root/.cargo/registry/index -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/cache:/root/.cargo/registry/cache -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/git/db:/root/.cargo/git/db tmp /bin/sh -c "cargo build --release && rm -f target/release/deps/libsubql_utils*"
+        docker run --rm -v /tmp/.buildx-cache/${{inputs.arch}}/target:/subql/target -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/bin:/root/.cargo/bin -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/index:/root/.cargo/registry/index -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/cache:/root/.cargo/registry/cache -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/git/db:/root/.cargo/git/db dep-builder /bin/sh -c "cargo build --release && rm -f target/release/deps/libsubql_utils*"
       shell: bash
     -
       # Temp fix
