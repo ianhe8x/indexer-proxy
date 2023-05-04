@@ -27,11 +27,13 @@ runs:
       run: |
         docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . 
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/target"
-        cp -r "/tmp/.buildx-cache/${{inputs.arch}}/target" .
+        mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/bin"
+        mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/index"
+        mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/cache"
+        mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/git/db"
         ls ${{github.workspace}}/target
         ls ${{github.workspace}}/target/release || true
-        ls ${{github.workspace}}/target/release/deps || true
-        docker run --rm -v ${{github.workspace}}/target:/subql/target tmp /bin/sh -c "ls target && cargo build --release && rm -f target/release/deps/libsubql_utils*"
+        docker run --rm -v /tmp/.buildx-cache/${{inputs.arch}}/target:/subql/target -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/bin:/root/.cargo/bin -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/index:/root/.cargo/registry/index -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/cache:/root/.cargo/registry/cache -v /tmp/.buildx-cache/${{inputs.arch}}/.cargo/git/db:/root/.cargo/git/db tmp /bin/sh -c "cargo build --release && rm -f target/release/deps/libsubql_utils*"
         rm -rf /tmp/.buildx-cache/${{inputs.arch}}/target
         cp -r target /tmp/.buildx-cache/${{inputs.arch}}
       shell: bash
