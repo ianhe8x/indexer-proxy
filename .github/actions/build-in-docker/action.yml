@@ -3,7 +3,7 @@
 # This is to compensate for yarn 3 issue https://github.com/yarnpkg/berry/issues/3868
 name: 'Build in docker'
 description: 'This will remove stableVersion from packages for prerelease'
-inputs: []
+
   
 runs:
   using: "composite"
