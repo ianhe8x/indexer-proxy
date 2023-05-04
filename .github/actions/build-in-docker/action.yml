@@ -13,6 +13,5 @@ runs:
       uses: docker/setup-buildx-action@v2
     - name: Build
       run: |
-        docker build -t tmp -f .github/actions/build-in-docker/Dockerfile .
-        docker cp tmp:/subql/target ${github.workspace}
+        docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . && docker cp tmp:/subql/target ${github.workspace}/
       shell: sh
