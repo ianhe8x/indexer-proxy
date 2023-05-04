@@ -11,5 +11,5 @@ runs:
     - uses: actions/checkout@v3
     - name: Build
       run: |
-        docker build .
+        docker build -f .github/actions/build-in-docker/Dockerfile .
       shell: sh
