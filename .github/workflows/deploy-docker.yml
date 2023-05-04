@@ -36,7 +36,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
       - name: Build
-        uses: .github/actions/build-in-docker
+        uses: ./.github/actions/build-in-docker
         with:
           cachedir: /tmp/.buildx-cache/amd64
 #        run: |
