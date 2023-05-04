@@ -3,14 +3,14 @@
 # This is to compensate for yarn 3 issue https://github.com/yarnpkg/berry/issues/3868
 name: 'Build in docker'
 description: 'This will remove stableVersion from packages for prerelease'
+inputs:
+  cachedir:
+    description: 'the path of cachedir'
+    required: true
 
   
 runs:
   using: "composite"
-  inputs:
-    cachedir:
-      description: 'the path of cachedir'
-      required: true
   steps:
     - uses: actions/checkout@v3
     - name: Set up Docker Buildx
