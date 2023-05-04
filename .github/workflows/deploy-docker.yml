@@ -27,19 +27,22 @@ jobs:
         with:
           username: onfinality
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       - name: Build
-        run: |
-          docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . && docker cp $(docker create --name tmp tmp):/subql/target ${{github.workspace}} && docker rm tmp
+        uses: .github/actions/build-in-docker
+        with:
+          cachedir: /tmp/.buildx-cache/amd64
+#        run: |
+#          docker build -t tmp -f .github/actions/build-in-docker/Dockerfile . && docker cp $(docker create --name tmp tmp):/subql/target ${{github.workspace}} && docker rm tmp
       - run: |
           ls && ls target
-#      -
-#        name: Cache Docker layers
-#        uses: actions/cache@v3
-#        with:
-#          path: /tmp/.buildx-cache
-#          key: ${{ runner.os }}-buildx
-#          restore-keys: |
-#            ${{ runner.os }}-buildx-
 #      ## node
 #      - name: Get updated coordinator version
 #        id: fetch-version
