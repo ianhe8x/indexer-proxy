@@ -24,5 +24,5 @@ COPY .dummy/proxy/src/main.rs ./proxy/src/
 COPY .dummy/utils/Cargo.toml ./utils/
 COPY .dummy/utils/src/lib.rs ./utils/src/
 
-RUN --mount=type=bind,source=./target,target=/subql/target,rw=true \
+RUN --mount=type=bind,source=${GITHUB_WORKSPACE}/target,target=/subql/target,rw=true \
     cargo build --release && rm -f target/release/deps/libsubql_utils*
