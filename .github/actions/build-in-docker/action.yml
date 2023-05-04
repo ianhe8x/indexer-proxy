@@ -1,0 +1,15 @@
+# Composite action needed to access github context
+
+# This is to compensate for yarn 3 issue https://github.com/yarnpkg/berry/issues/3868
+name: 'Build in docker'
+description: 'This will remove stableVersion from packages for prerelease'
+inputs:
+  
+runs:
+  using: "composite"
+  container:
+    image: rust:1.69
+  steps:
+    - working-directory: ${{ github.workspace }}
+      run: pwd && ls
+      shell: bash
