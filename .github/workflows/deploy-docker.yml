@@ -31,7 +31,6 @@ jobs:
         uses: ./.github/actions/build-in-docker
         with:
           arch: amd64
-      - run: ls target
       ## node
       - name: Get updated coordinator version
         id: fetch-version
