@@ -1,5 +1,5 @@
-# Builder
-FROM rust AS builder
+FROM lukemathwalker/cargo-chef:0.1.59-rust-1.69-slim-buster AS chef
+WORKDIR /subql
 
 ENV NODE_VERSION=16.20.0
 RUN apt install -y curl
@@ -17,6 +17,7 @@ RUN update-ca-certificates
 
 WORKDIR /subql
 
-COPY .dummy ./
-COPY Cargo.lock ./
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
 
