@@ -30,12 +30,13 @@ runs:
         platforms: amd64
         file: .github/actions/build-in-docker/Dockerfile
         context: .
-        tags: dep-builder
+        tags: dep-builder:latest
         outputs: type=docker
         cache-from: type=local,src=/tmp/.buildx-cache/builder
         cache-to: type=local,dest=/tmp/.builder-new,mode=max
     - name: Build
       run: |
+        docker images
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/target"
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/bin"
         mkdir -p "/tmp/.buildx-cache/${{inputs.arch}}/.cargo/registry/index"
