@@ -1,5 +1,5 @@
 # Builder
-FROM dep-builder AS builder
+FROM dep-builder:latest AS builder
 
 WORKDIR /subql
 
