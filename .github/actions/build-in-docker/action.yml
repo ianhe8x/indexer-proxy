@@ -31,7 +31,7 @@ runs:
         file: .github/actions/build-in-docker/Dockerfile
         context: .
         tags: dep-builder:latest
-        outputs: type=docker
+        load: true
     - name: Build
       run: |
         docker images
