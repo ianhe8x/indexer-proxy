@@ -5,8 +5,6 @@ WORKDIR /subql
 
 COPY . .
 
-RUN ls target
-
 RUN cargo build --release
 
 # Final image
