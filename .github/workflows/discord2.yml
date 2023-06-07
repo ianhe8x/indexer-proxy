@@ -25,7 +25,9 @@ jobs:
           echo "::set-output name=releaseUrl::${{ github.event.release.html_url }}"
 
       - name: Send release details to Discord
-        uses: discord/send-message@v1
+        uses: rjstone/discord-webhook-notify@v1
         with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK }}
-          message: ${{ steps.release.outputs.releaseBody }}
+          webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
+          severity: info
+          details: ${{ github.event.release.body }}
+          text: ${{ github.event.release.name }}
