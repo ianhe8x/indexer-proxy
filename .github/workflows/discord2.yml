@@ -26,9 +26,9 @@ jobs:
         uses: rjstone/discord-webhook-notify@v1
         with:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
-          color: '#ff00aa'
+          color: '#6499ff'
           avatarUrl: https://github.githubassets.com/images/modules/logos_page/Octocat.png
           details: ${{ github.event.release.body }}
-          text: ${{ github.event.release.name }}
-          description: 'e'
-          footer: 'f'
+          text: indexer-proxy
+          description: ${{ github.event.release.name }}
+          footer: ${{ github.event.release.html_url }}
