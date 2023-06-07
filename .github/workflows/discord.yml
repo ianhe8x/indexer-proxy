@@ -1,0 +1,34 @@
+on:
+  release:
+    types: [published]
+
+  jobs:
+    notify:
+      name: Discord Notification
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Get release details
+          id: release
+          run: |
+            echo "New release: ${{ github.event.release.name || github.event.release.tag_name }}"
+            echo ""
+            echo "${{ github.event.release.body }}"
+            echo ""
+            echo "Release URL: ${{ github.event.release.html_url }}"
+            echo "::set-output name=releaseName::${{ github.event.release.name || github.event.release.tag_name }}"
+            echo "::set-output name=releaseBody::${{ github.event.release.body }}"
+            echo "::set-output name=releaseUrl::${{ github.event.release.html_url }}"
+
+        - name: Send release details to Discord
+          uses: nobrayner/discord-webhook@v1
+          with:
+            github-token: ${{ secrets.DOCKERHUB_TOKEN }}
+            discord-webhook: ${{ secrets.DISCORD_WEBHOOK }}
+            username: 'Release Bot'
+            title: '${{ steps.release.outputs.releaseName }}'
+            include-details: 'false'
+            description: |
+              New release: [${{ steps.release.outputs.releaseName }}](${{ steps.release.outputs.releaseUrl }})
+              
+              ${{ steps.release.outputs.releaseBody }}
