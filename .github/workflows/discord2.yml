@@ -1,6 +1,10 @@
+name: discord
 on:
   release:
-    types: [published]
+    types:
+      - published
+      - created
+      - released
 
 jobs:
   notify:
