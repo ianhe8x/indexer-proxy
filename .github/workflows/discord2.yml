@@ -1,4 +1,4 @@
-name: discord3
+name: discord
 on:
   release:
     types:
