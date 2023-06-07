@@ -27,7 +27,7 @@ jobs:
       - name: Send release details to Discord
         uses: nobrayner/discord-webhook@v1
         with:
-          github-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github-token: ${{ secrets.GH_TOKEN }}
           discord-webhook: ${{ secrets.DISCORD_WEBHOOK }}
           username: 'Release Bot'
           title: '${{ steps.release.outputs.releaseName }}'
